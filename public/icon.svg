@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="50%" stop-color="#0ea5e9" />
+      <stop offset="100%" stop-color="#f43f5e" />
+    </linearGradient>
+    <linearGradient id="cardGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95" />
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.8" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="115" fill="url(#bg)" />
+  <g transform="translate(96, 96)">
+    <!-- Couple Intersecting Coins / Rings -->
+    <circle cx="120" cy="140" r="88" fill="none" stroke="#ffffff" stroke-width="26" opacity="0.95" />
+    <circle cx="200" cy="180" r="88" fill="none" stroke="#fecdd3" stroke-width="26" opacity="0.9" />
+    <!-- Euro symbol in center -->
+    <path d="M 148 110 C 120 110 95 130 95 160 C 95 190 120 210 148 210 M 80 145 L 140 145 M 80 175 L 135 175" fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round" />
+  </g>
+</svg>

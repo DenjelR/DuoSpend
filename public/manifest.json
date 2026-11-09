@@ -1,0 +1,20 @@
+{
+  "id": "/",
+  "name": "DuoSpend - Párové výdavky",
+  "short_name": "DuoSpend",
+  "description": "Párové sledovanie výdavkov, domácnosti a výletov",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0284c7",
+  "theme_color": "#0284c7",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

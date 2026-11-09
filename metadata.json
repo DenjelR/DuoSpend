@@ -1,0 +1,6 @@
+{
+  "name": "DuoSpend - Párové výdavky a výlety",
+  "description": "Moderná mobilná iOS aplikácia pre pár na sledovanie spoločných financií, rozdelenie nákladov 50/50, správu domácnosti a výletov so Supabase synchronizáciou.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
