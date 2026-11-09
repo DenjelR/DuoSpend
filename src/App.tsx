@@ -4,7 +4,6 @@ import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
 import { DashboardTab } from './components/DashboardTab';
 import { TransactionsTab } from './components/TransactionsTab';
-import { TripsTab } from './components/TripsTab';
 import { SettingsTab } from './components/SettingsTab';
 import { AddExpenseModal } from './components/AddExpenseModal';
 import { CategoriesModal } from './components/CategoriesModal';
@@ -34,9 +33,8 @@ const MainApp: React.FC = () => {
 
       {/* Main Content Viewport */}
       <main className="flex-1 max-w-lg w-full mx-auto px-4 pt-3 pb-8">
-        {activeTab === 'dashboard' && <DashboardTab />}
+        {activeTab === 'events' && <DashboardTab />}
         {activeTab === 'transactions' && <TransactionsTab />}
-        {activeTab === 'trips' && <TripsTab />}
         {activeTab === 'settings' && (
           <SettingsTab
             onOpenProfilesModal={() => setIsProfileModalOpen(true)}
@@ -71,7 +69,7 @@ const MainApp: React.FC = () => {
       />
 
       {/* Bottom iOS Navigation Bar */}
-      <BottomNav />
+      <BottomNav onOpenCategoriesModal={() => setIsCategoriesModalOpen(true)} />
     </div>
   );
 };

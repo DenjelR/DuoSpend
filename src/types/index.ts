@@ -8,6 +8,21 @@ export interface UserProfile {
   pin?: string; // Optional 4 digit PIN
 }
 
+export type EventType = 'trip' | 'renovation' | 'dates' | 'other';
+
+export interface AppEvent {
+  id: string;
+  name: string;
+  type: EventType;
+  emoji: string;
+  color: string;
+  description?: string;
+  destination?: string; // for trips
+  target_budget?: number;
+  created_at: string;
+  updated_at?: string;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -15,20 +30,24 @@ export interface Category {
   color: string;
   subcategories: string[];
   isSystem?: boolean;
+  defaultEventType?: EventType;
 }
 
 export interface Expense {
   id: string;
   amount: number;
   paid_by: UserId;
+  event_id: string; // ID of the event/project (Prerábka bytu, Výlet do Talianska, etc.)
   category_id: string;
   subcategory: string;
-  country?: string; // Destination/country for trips
-  date: string; // ISO date 'YYYY-MM-DD'
-  note?: string;
+  item_title?: string; // Čo to bolo (napr. "Obkladačky do kúpeľne", "Večera pri sviečkach")
+  note?: string; // Komentár / poznámka k výdavku
+  country?: string; // Krajina / mesto
+  date: string; // 'YYYY-MM-DD'
   is_settled: boolean;
   settlement_id?: string | null;
   created_at: string;
+  updated_at?: string; // Dátová pečiatka zmeny / poslednej úpravy
 }
 
 export interface Settlement {
@@ -37,6 +56,7 @@ export interface Settlement {
   amount: number;
   from_user: UserId;
   to_user: UserId;
+  event_id?: string;
   note?: string;
   settled_expense_ids: string[];
   created_at: string;
@@ -48,4 +68,4 @@ export interface SupabaseConfig {
   configured: boolean;
 }
 
-export type ActiveTab = 'dashboard' | 'transactions' | 'add' | 'trips' | 'settings';
+export type ActiveTab = 'events' | 'transactions' | 'add' | 'categories' | 'settings';

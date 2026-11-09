@@ -1,5 +1,5 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Expense, Category, Settlement, UserProfile } from '../types';
+import { Expense, Category, Settlement, UserProfile, AppEvent } from '../types';
 
 // Retrieve credentials from Vite env or local storage override
 export function getSupabaseCredentials(): { url: string; anonKey: string; isConfigured: boolean } {
@@ -69,12 +69,10 @@ export async function testSupabaseConnection(url?: string, key?: string): Promis
     }
 
     const testClient = createClient(targetUrl, targetKey);
-    // Simple ping to check if credentials are valid
     const { error } = await testClient.from('expenses').select('id').limit(1);
 
     if (error) {
       if (error.code === '42P01') {
-        // Table doesn't exist yet, but connection is valid!
         return {
           success: true,
           message: 'Pripojenie k Supabase je úspešné! Tabuľky zatiaľ neboli vytvorené, použite SQL skript nižšie.',
@@ -92,22 +90,39 @@ export async function testSupabaseConnection(url?: string, key?: string): Promis
 // Complete SQL script to set up all tables and realtime in Supabase SQL editor
 export const SUPABASE_SQL_SETUP = `-- DUOSPEND: SQL SKRIPT PRE SUPABASE (Spustite v Supabase -> SQL Editor)
 
--- 1. Tabuľka výdavkov (expenses)
+-- 1. Tabuľka projektov / eventov (events: výlety, prerábka bytu, spoločné rande)
+CREATE TABLE IF NOT EXISTS public.events (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    emoji TEXT NOT NULL,
+    color TEXT NOT NULL,
+    description TEXT,
+    destination TEXT,
+    target_budget NUMERIC,
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- 2. Tabuľka výdavkov (expenses s event_id, item_title, dátovou pečiatkou zmeny)
 CREATE TABLE IF NOT EXISTS public.expenses (
     id TEXT PRIMARY KEY,
     amount NUMERIC NOT NULL,
     paid_by TEXT NOT NULL,
+    event_id TEXT NOT NULL,
     category_id TEXT NOT NULL,
     subcategory TEXT NOT NULL,
+    item_title TEXT,
+    note TEXT,
     country TEXT,
     date DATE NOT NULL,
-    note TEXT,
     is_settled BOOLEAN DEFAULT FALSE,
     settlement_id TEXT,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ
 );
 
--- 2. Tabuľka kategórií (categories)
+-- 3. Tabuľka kategórií (categories)
 CREATE TABLE IF NOT EXISTS public.categories (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -115,22 +130,24 @@ CREATE TABLE IF NOT EXISTS public.categories (
     color TEXT NOT NULL,
     subcategories JSONB NOT NULL DEFAULT '[]'::jsonb,
     is_system BOOLEAN DEFAULT FALSE,
+    default_event_type TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 3. Tabuľka vyrovnaní účtov (settlements)
+-- 4. Tabuľka vyrovnaní účtov (settlements)
 CREATE TABLE IF NOT EXISTS public.settlements (
     id TEXT PRIMARY KEY,
     date DATE NOT NULL,
     amount NUMERIC NOT NULL,
     from_user TEXT NOT NULL,
     to_user TEXT NOT NULL,
+    event_id TEXT,
     note TEXT,
     settled_expense_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 4. Tabuľka profilov páru (profiles)
+-- 5. Tabuľka profilov páru (profiles)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -140,19 +157,21 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Povolenie RLS a verejný prístup (pre jednoduché párové zdieľanie cez anon kľúč)
+-- Povolenie RLS a verejný prístup
+ALTER TABLE public.events ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.expenses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.settlements ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
--- Verejné politiky pre čítanie a zápis
+CREATE POLICY "Public events access" ON public.events FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public expenses access" ON public.expenses FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public categories access" ON public.categories FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public settlements access" ON public.settlements FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public profiles access" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
 
 -- Zapnutie Realtime synchronizácie pre okamžité zmeny medzi mobilmi
+ALTER PUBLICATION supabase_realtime ADD TABLE public.events;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.settlements;
