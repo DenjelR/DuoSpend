@@ -8,7 +8,7 @@ export interface UserProfile {
   pin?: string; // Optional 4 digit PIN
 }
 
-export type EventType = 'trip' | 'renovation' | 'dates' | 'other';
+export type EventType = 'trip' | 'dates' | 'renovation' | 'household' | 'other';
 
 export interface AppEvent {
   id: string;
@@ -17,10 +17,15 @@ export interface AppEvent {
   emoji: string;
   color: string;
   description?: string;
-  destination?: string; // for trips
+  destination_country?: string; // Country for trip
+  currency: string; // e.g. 'EUR', 'CZK', 'JPY', 'PLN', 'USD'
+  currency_symbol: string; // e.g. '€', 'Kč', '¥', 'zł', '$'
+  exchange_rate_to_eur?: number; // e.g. 25.2 CZK per EUR
   target_budget?: number;
+  status: 'active' | 'closed'; // 'active' = otvorený zber, 'closed' = ukončený zber
   created_at: string;
   updated_at?: string;
+  closed_at?: string;
 }
 
 export interface Category {
@@ -35,19 +40,23 @@ export interface Category {
 
 export interface Expense {
   id: string;
-  amount: number;
+  amount: number; // Stored in EUR for consistent totals & 50/50 balance
+  original_amount?: number; // In local currency if different from EUR
+  currency?: string; // e.g. 'CZK'
+  currency_symbol?: string; // e.g. 'Kč'
+  exchange_rate?: number;
   paid_by: UserId;
-  event_id: string; // ID of the event/project (Prerábka bytu, Výlet do Talianska, etc.)
+  event_id: string; // ID of the event/project
   category_id: string;
   subcategory: string;
-  item_title?: string; // Čo to bolo (napr. "Obkladačky do kúpeľne", "Večera pri sviečkach")
-  note?: string; // Komentár / poznámka k výdavku
-  country?: string; // Krajina / mesto
+  item_title?: string; // Čo to bolo
+  note?: string; // Komentár k tomu
+  country?: string;
   date: string; // 'YYYY-MM-DD'
   is_settled: boolean;
   settlement_id?: string | null;
   created_at: string;
-  updated_at?: string; // Dátová pečiatka zmeny / poslednej úpravy
+  updated_at?: string; // Dátová pečiatka zmeny
 }
 
 export interface Settlement {

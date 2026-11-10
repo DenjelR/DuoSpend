@@ -15,9 +15,9 @@ import {
   Heart,
   History,
   Lock,
+  Trash2,
 } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
-import { SAMPLE_EXPENSES, DEFAULT_CATEGORIES, DEFAULT_PROFILES } from '../lib/defaultData';
 
 interface SettingsTabProps {
   onOpenProfilesModal: () => void;
@@ -37,16 +37,22 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     otherUser,
     profiles,
     categories,
+    events,
     expenses,
     settlements,
     isDarkMode,
     toggleDarkMode,
     supabaseStatus,
+    resetAllData,
   } = useApp();
 
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
   const [showIOSInstallHelp, setShowIOSInstallHelp] = useState(false);
   const [resetSuccess, setResetSuccess] = useState(false);
+  const [showWipeConfirm, setShowWipeConfirm] = useState(false);
+
+  const danko = profiles.find((p) => p.id === 'user_1') || profiles[0];
+  const simonka = profiles.find((p) => p.id === 'user_2') || profiles[1];
 
   // Export full JSON backup
   const handleExportBackup = () => {
@@ -54,6 +60,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
       exportDate: new Date().toISOString(),
       profiles,
       categories,
+      events,
       expenses,
       settlements,
     };
@@ -64,54 +71,47 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `duospend_zaloha_${new Date().toISOString().split('T')[0]}.json`;
+    a.download = `duospend_danko_simonka_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  // Reset to sample initial data
-  const handleResetDemo = () => {
-    if (confirm('Naozaj chcete obnoviť ukážkové dáta aplikácie?')) {
-      localStorage.setItem('duospend_expenses', JSON.stringify(SAMPLE_EXPENSES));
-      localStorage.setItem('duospend_categories', JSON.stringify(DEFAULT_CATEGORIES));
-      localStorage.setItem('duospend_profiles', JSON.stringify(DEFAULT_PROFILES));
-      localStorage.setItem('duospend_settlements', JSON.stringify([]));
-      setResetSuccess(true);
-      setTimeout(() => {
-        window.location.reload();
-      }, 800);
-    }
+  const handleWipeData = () => {
+    resetAllData();
+    setShowWipeConfirm(false);
+    setResetSuccess(true);
+    setTimeout(() => setResetSuccess(false), 2500);
   };
 
   return (
     <div className="space-y-4 pb-28 animate-in fade-in duration-300">
-      {/* 1. Header Profile Hero Banner */}
+      {/* 1. Header Couple Hero Banner */}
       <div className="bg-gradient-to-br from-sky-500/10 via-rose-500/10 to-transparent dark:from-sky-950/20 dark:via-rose-950/20 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="flex -space-x-2">
             <div
               className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-md ring-2 ring-white dark:ring-slate-900"
-              style={{ backgroundColor: profiles[0].avatarColor + '20', color: profiles[0].avatarColor }}
+              style={{ backgroundColor: danko.avatarColor + '20', color: danko.avatarColor }}
             >
-              {profiles[0].emoji}
+              {danko.emoji}
             </div>
             <div
               className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl shadow-md ring-2 ring-white dark:ring-slate-900"
-              style={{ backgroundColor: profiles[1].avatarColor + '20', color: profiles[1].avatarColor }}
+              style={{ backgroundColor: simonka.avatarColor + '20', color: simonka.avatarColor }}
             >
-              {profiles[1].emoji}
+              {simonka.emoji}
             </div>
           </div>
 
           <div>
             <div className="flex items-center gap-1.5">
               <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
-                {profiles[0].name} & {profiles[1].name}
+                {danko.name} & {simonka.name}
               </h2>
               <Heart className="w-3.5 h-3.5 text-rose-500 fill-rose-500" />
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Spoločný rozpočet a párové financie
+              Spoločné výdavky, výlety a domácnosť
             </p>
           </div>
         </div>
@@ -120,7 +120,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           onClick={onOpenProfilesModal}
           className="text-xs font-bold px-3 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 shadow-xs transition-all active:scale-95"
         >
-          Upraviť
+          Profily
         </button>
       </div>
 
@@ -140,7 +140,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 Správa kategórií a podkategórií
               </h3>
               <p className="text-[11px] text-slate-400">
-                {categories.length} kategórií (Domácnosť, Výlet, Spoločné výdavky...)
+                Výlety, Spoločné rande, Prerábanie bytu, Domácnosť
               </p>
             </div>
           </div>
@@ -178,7 +178,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 </span>
               </div>
               <p className="text-[11px] text-slate-400">
-                Kľúče, SQL tabuľky a okamžitá synchronizácia medzi mobilmi
+                Prepojenie telefónu Danka a Simonky naživo
               </p>
             </div>
           </div>
@@ -199,7 +199,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 Návod na nasadenie na Vercel
               </h3>
               <p className="text-[11px] text-slate-400">
-                Ako nastaviť Environment Variables a spustiť build
+                Environment Variables a postup spustenia
               </p>
             </div>
           </div>
@@ -217,7 +217,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
                 Tmavý režim (Dark Mode)
               </h3>
               <p className="text-[11px] text-slate-400">
-                Optimalizované pre OLED displeje iPhone
+                Optimalizované pre iPhone OLED
               </p>
             </div>
           </div>
@@ -247,7 +247,7 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
             <div>
               <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-                Inštalácia aplikácie (PWA)
+                Inštalácia na mobil (PWA)
               </h3>
               <p className="text-[11px] text-slate-400">
                 Pridajte appku priamo na plochu iPhonu / Androidu
@@ -291,50 +291,18 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
             </div>
             <ol className="list-decimal pl-4 space-y-1 text-slate-600 dark:text-slate-300 text-[11px]">
               <li>Otvorte túto stránku v prehliadači <strong>Safari</strong> na iPhone.</li>
-              <li>Ťuknite na ikonu <strong>Zdieľať (Share - štvorec so šípkou hore)</strong>.</li>
+              <li>Ťuknite na ikonu <strong>Zdieľať (Share)</strong> v dolnej lište.</li>
               <li>Posuňte sa nižšie a ťuknite na <strong>Pridať na plochu (Add to Home Screen)</strong>.</li>
-              <li>Aplikácia sa pridá na vašu plochu s vlastnou ikonou DuoSpend!</li>
+              <li>Aplikácia sa pridá na plochu s vlastnou ikonou DuoSpend!</li>
             </ol>
           </div>
         )}
       </div>
 
-      {/* 4. Settlement History Preview */}
-      {settlements.length > 0 && (
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
-          <div className="flex items-center gap-2">
-            <History className="w-4 h-4 text-emerald-600" />
-            <h3 className="text-xs font-bold text-slate-900 dark:text-white">
-              Archív vyrovnaní účtov ({settlements.length})
-            </h3>
-          </div>
-
-          <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-40 overflow-y-auto no-scrollbar">
-            {settlements.map((s) => {
-              const fromP = profiles.find((p) => p.id === s.from_user);
-              const toP = profiles.find((p) => p.id === s.to_user);
-              return (
-                <div key={s.id} className="py-2 flex items-center justify-between text-xs">
-                  <div>
-                    <span className="font-semibold text-slate-800 dark:text-slate-200">
-                      {fromP?.name} vyrovnal(a) {toP?.name}
-                    </span>
-                    <span className="text-[10px] text-slate-400 block">{s.date}</span>
-                  </div>
-                  <span className="font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">
-                    {s.amount.toFixed(2)} €
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* 5. Data Export & Demo Reset */}
+      {/* 4. Data Backup & Reset completely */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3">
         <h3 className="text-xs font-bold text-slate-900 dark:text-white uppercase tracking-wider">
-          Záloha a dáta
+          Správa dát a vynulovanie
         </h3>
 
         <div className="flex gap-2">
@@ -347,24 +315,53 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
           </button>
 
           <button
-            onClick={handleResetDemo}
-            className="py-2.5 px-3 rounded-xl border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
-            title="Resetovať dáta"
+            onClick={() => setShowWipeConfirm(true)}
+            className="py-2.5 px-3 rounded-xl border border-rose-300 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+            title="Vynulovať všetky výdavky"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Obnoviť ukážku</span>
+            <span>Vynulovať dáta (0 €)</span>
           </button>
         </div>
 
         {resetSuccess && (
-          <div className="p-2 bg-emerald-50 text-emerald-700 rounded-xl text-xs text-center font-semibold">
-            Dáta boli úspešne obnovené!
+          <div className="p-2.5 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 rounded-xl text-xs text-center font-bold">
+            Všetky výdavky boli úspešne vynulované na 0 €!
           </div>
         )}
       </div>
 
+      {/* Wipe Confirmation Dialog */}
+      {showWipeConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-2xl border border-slate-200 dark:border-slate-800 text-center animate-in zoom-in-95 duration-200">
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              Naozaj vynulovať všetky dáta?
+            </h3>
+            <p className="text-xs text-slate-500 mt-2">
+              Všetky výdavky sa vymažú a začnete s úplne čistým kontom 0 €.
+            </p>
+
+            <div className="flex gap-2 mt-5">
+              <button
+                onClick={() => setShowWipeConfirm(false)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs font-semibold text-slate-600"
+              >
+                Zrušiť
+              </button>
+              <button
+                onClick={handleWipeData}
+                className="flex-1 py-2.5 rounded-xl bg-rose-600 text-white text-xs font-bold"
+              >
+                Áno, vynulovať
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="text-center text-[11px] text-slate-400 pb-2">
-        DuoSpend v1.0.0 · Vytvorené s láskou pre páry
+        DuoSpend v2.0 · Danko & Simonka
       </div>
     </div>
   );

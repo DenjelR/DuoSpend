@@ -28,10 +28,31 @@ export const CategoryDonutChart: React.FC<CategoryDonutChartProps> = ({ expenses
     .filter((c) => c.total > 0)
     .sort((a, b) => b.total - a.total);
 
+  // Handle any custom or unmapped categories
+  const mappedIds = new Set(categories.map((c) => c.id));
+  let unmappedTotal = 0;
+  expenses.forEach((e) => {
+    if (!mappedIds.has(e.category_id)) {
+      unmappedTotal += e.amount;
+    }
+  });
+
+  if (unmappedTotal > 0) {
+    categoryData.push({
+      id: 'unmapped',
+      name: 'Ostatné / Vlastné',
+      iconName: 'Tag',
+      color: '#64748b',
+      subcategories: [],
+      total: unmappedTotal,
+      percentage: totalAmount > 0 ? (unmappedTotal / totalAmount) * 100 : 0,
+    });
+  }
+
   if (totalAmount === 0 || categoryData.length === 0) {
     return (
-      <div className="py-8 text-center text-slate-400 dark:text-slate-500 text-sm">
-        Žiadne výdavky za tento mesiac
+      <div className="py-6 text-center text-slate-400 dark:text-slate-500 text-xs">
+        Zatiaľ žiadne zaevidované výdavky pre tento projekt.
       </div>
     );
   }
@@ -65,7 +86,7 @@ export const CategoryDonutChart: React.FC<CategoryDonutChartProps> = ({ expenses
                 strokeWidth={isSelected ? strokeWidth + 4 : strokeWidth}
                 strokeDasharray={strokeDasharray}
                 strokeDashoffset={strokeDashoffset}
-                strokeLinecap="round"
+                strokeLinecap={categoryData.length === 1 ? 'butt' : 'round'}
                 className="transition-all duration-300 cursor-pointer hover:opacity-90"
                 onClick={() =>
                   setSelectedCategoryId(selectedCategoryId === item.id ? null : item.id)
@@ -82,14 +103,14 @@ export const CategoryDonutChart: React.FC<CategoryDonutChartProps> = ({ expenses
               const selected = categoryData.find((c) => c.id === selectedCategoryId);
               return (
                 <>
-                  <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-400 truncate max-w-[100px]">
+                  <span className="text-[11px] font-semibold text-slate-400 dark:text-slate-400 truncate max-w-[110px]">
                     {selected?.name}
                   </span>
                   <span className="text-lg font-bold text-slate-900 dark:text-white tabular-nums">
                     {selected?.total.toFixed(2)} €
                   </span>
                   <span className="text-[10px] text-sky-500 font-medium">
-                    {selected?.percentage.toFixed(0)}% z celku
+                    {selected?.percentage.toFixed(0)}% z projektu
                   </span>
                 </>
               );
@@ -143,86 +164,6 @@ export const CategoryDonutChart: React.FC<CategoryDonutChartProps> = ({ expenses
 
               <span className="text-xs font-bold text-slate-900 dark:text-white tabular-nums shrink-0 ml-2">
                 {item.total.toFixed(2)} €
-              </span>
-            </button>
-          );
-        })}
-      </div>
-    </div>
-  );
-};
-
-interface MonthlyTrendChartProps {
-  expenses: Expense[];
-  currentMonth: string;
-  onSelectMonth: (month: string) => void;
-}
-
-export const MonthlyTrendChart: React.FC<MonthlyTrendChartProps> = ({
-  expenses,
-  currentMonth,
-  onSelectMonth,
-}) => {
-  // Generate last 6 months list
-  const months: { label: string; key: string }[] = [];
-  const [currY, currM] = currentMonth.split('-').map(Number);
-  const now = new Date(currY, currM - 1, 1);
-
-  const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'Máj', 'Jún', 'Júl', 'Aug', 'Sep', 'Okt', 'Nov', 'Dec'];
-
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-    const label = `${monthNames[d.getMonth()]}`;
-    months.push({ label, key });
-  }
-
-  // Calculate totals per month
-  const monthlyTotals: { [key: string]: number } = {};
-  expenses.forEach((e) => {
-    const mKey = e.date.substring(0, 7);
-    monthlyTotals[mKey] = (monthlyTotals[mKey] || 0) + e.amount;
-  });
-
-  const maxTotal = Math.max(...months.map((m) => monthlyTotals[m.key] || 0), 100);
-
-  return (
-    <div className="w-full">
-      <div className="flex items-end justify-between gap-2 h-32 pt-4 pb-1 px-1">
-        {months.map((m) => {
-          const val = monthlyTotals[m.key] || 0;
-          const heightPercent = Math.max((val / maxTotal) * 100, 6);
-          const isSelected = m.key === currentMonth;
-
-          return (
-            <button
-              key={m.key}
-              onClick={() => onSelectMonth(m.key)}
-              className="flex-1 flex flex-col items-center gap-1 group transition-all"
-            >
-              <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity tabular-nums">
-                {val > 0 ? `${Math.round(val)}€` : ''}
-              </span>
-
-              <div className="w-full flex justify-center items-end h-20">
-                <div
-                  style={{ height: `${heightPercent}%` }}
-                  className={`w-full max-w-[28px] rounded-t-lg transition-all duration-300 ${
-                    isSelected
-                      ? 'bg-gradient-to-t from-sky-600 to-rose-500 shadow-md shadow-sky-500/20'
-                      : 'bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700'
-                  }`}
-                />
-              </div>
-
-              <span
-                className={`text-[10px] font-semibold transition-colors ${
-                  isSelected
-                    ? 'text-sky-600 dark:text-sky-400 font-bold'
-                    : 'text-slate-400 dark:text-slate-500'
-                }`}
-              >
-                {m.label}
               </span>
             </button>
           );

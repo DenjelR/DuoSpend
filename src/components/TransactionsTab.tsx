@@ -326,6 +326,11 @@ export const TransactionsTab: React.FC = () => {
                           <span className="text-sm font-extrabold text-slate-900 dark:text-white tabular-nums block">
                             {exp.amount.toFixed(2)} €
                           </span>
+                          {exp.currency && exp.currency !== 'EUR' && exp.original_amount && (
+                            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold block">
+                              ({exp.original_amount.toFixed(0)} {exp.currency})
+                            </span>
+                          )}
                         </div>
                       </div>
 

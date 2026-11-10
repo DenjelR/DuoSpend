@@ -90,7 +90,7 @@ export async function testSupabaseConnection(url?: string, key?: string): Promis
 // Complete SQL script to set up all tables and realtime in Supabase SQL editor
 export const SUPABASE_SQL_SETUP = `-- DUOSPEND: SQL SKRIPT PRE SUPABASE (Spustite v Supabase -> SQL Editor)
 
--- 1. Tabuľka projektov / eventov (events: výlety, prerábka bytu, spoločné rande)
+-- 1. Tabuľka projektov / eventov (events: výlety, rande, domácnosť)
 CREATE TABLE IF NOT EXISTS public.events (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -98,16 +98,25 @@ CREATE TABLE IF NOT EXISTS public.events (
     emoji TEXT NOT NULL,
     color TEXT NOT NULL,
     description TEXT,
-    destination TEXT,
+    destination_country TEXT,
+    currency TEXT DEFAULT 'EUR',
+    currency_symbol TEXT DEFAULT '€',
+    exchange_rate_to_eur NUMERIC DEFAULT 1,
     target_budget NUMERIC,
+    status TEXT DEFAULT 'active', -- 'active' (otvorený) alebo 'closed' (ukončený zber)
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    updated_at TIMESTAMPTZ DEFAULT NOW()
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    closed_at TIMESTAMPTZ
 );
 
--- 2. Tabuľka výdavkov (expenses s event_id, item_title, dátovou pečiatkou zmeny)
+-- 2. Tabuľka výdavkov (expenses)
 CREATE TABLE IF NOT EXISTS public.expenses (
     id TEXT PRIMARY KEY,
-    amount NUMERIC NOT NULL,
+    amount NUMERIC NOT NULL, -- Vždy v EUR
+    original_amount NUMERIC, -- V lokálnej mene
+    currency TEXT DEFAULT 'EUR',
+    currency_symbol TEXT DEFAULT '€',
+    exchange_rate NUMERIC DEFAULT 1,
     paid_by TEXT NOT NULL,
     event_id TEXT NOT NULL,
     category_id TEXT NOT NULL,
@@ -147,7 +156,7 @@ CREATE TABLE IF NOT EXISTS public.settlements (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
--- 5. Tabuľka profilov páru (profiles)
+-- 5. Tabuľka profilov páru (Danko a Simonka)
 CREATE TABLE IF NOT EXISTS public.profiles (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -170,7 +179,7 @@ CREATE POLICY "Public categories access" ON public.categories FOR ALL USING (tru
 CREATE POLICY "Public settlements access" ON public.settlements FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public profiles access" ON public.profiles FOR ALL USING (true) WITH CHECK (true);
 
--- Zapnutie Realtime synchronizácie pre okamžité zmeny medzi mobilmi
+-- Zapnutie Realtime synchronizácie
 ALTER PUBLICATION supabase_realtime ADD TABLE public.events;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.expenses;
 ALTER PUBLICATION supabase_realtime ADD TABLE public.categories;

@@ -55,7 +55,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({ isOpen, onClos
   const [editName, setEditName] = useState('');
   const [editIcon, setEditIcon] = useState('');
   const [editColor, setEditColor] = useState('');
-  const [editSubcatInput, setEditSubcatInput] = useState('');
+  const [editSubcatInputs, setEditSubcatInputs] = useState<{ [catId: string]: string }>({});
 
   if (!isOpen) return null;
 
@@ -77,10 +77,13 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({ isOpen, onClos
   };
 
   const handleAddSubcatToExisting = async (cat: Category) => {
-    if (!editSubcatInput.trim()) return;
-    const updated = [...cat.subcategories, editSubcatInput.trim()];
-    await updateCategory(cat.id, { subcategories: updated });
-    setEditSubcatInput('');
+    const text = (editSubcatInputs[cat.id] || '').trim();
+    if (!text) return;
+    if (!cat.subcategories.includes(text)) {
+      const updated = [...cat.subcategories, text];
+      await updateCategory(cat.id, { subcategories: updated });
+    }
+    setEditSubcatInputs((prev) => ({ ...prev, [cat.id]: '' }));
   };
 
   const handleRemoveSubcatFromExisting = async (cat: Category, subcatToRemove: string) => {
@@ -371,9 +374,13 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({ isOpen, onClos
                       <input
                         type="text"
                         placeholder="Nová podkategória..."
-                        value={editingCatId === cat.id ? editSubcatInput : ''}
-                        onFocus={() => setEditingCatId(cat.id)}
-                        onChange={(e) => setEditSubcatInput(e.target.value)}
+                        value={editSubcatInputs[cat.id] || ''}
+                        onChange={(e) =>
+                          setEditSubcatInputs((prev) => ({
+                            ...prev,
+                            [cat.id]: e.target.value,
+                          }))
+                        }
                         onKeyDown={(e) => {
                           if (e.key === 'Enter') {
                             e.preventDefault();
@@ -385,7 +392,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({ isOpen, onClos
                       <button
                         type="button"
                         onClick={() => handleAddSubcatToExisting(cat)}
-                        className="px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-semibold rounded-lg"
+                        className="px-2.5 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-semibold rounded-lg active:scale-95 transition-all"
                       >
                         Pridať
                       </button>

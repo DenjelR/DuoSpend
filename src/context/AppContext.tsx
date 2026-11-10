@@ -31,11 +31,15 @@ interface AppContextType {
   lockApp: () => void;
   
   events: AppEvent[];
-  selectedEventId: string; // 'all' or specific event id
+  openEvents: AppEvent[];
+  closedEvents: AppEvent[];
+  selectedEventId: string;
   setSelectedEventId: (id: string) => void;
-  addEvent: (event: Omit<AppEvent, 'id' | 'created_at' | 'updated_at'>) => Promise<AppEvent>;
+  addEvent: (event: Omit<AppEvent, 'id' | 'created_at' | 'updated_at' | 'status'> & { status?: 'active' | 'closed' }) => Promise<AppEvent>;
   updateEvent: (id: string, updates: Partial<AppEvent>) => Promise<void>;
   deleteEvent: (id: string) => Promise<void>;
+  closeEvent: (id: string) => Promise<void>;
+  reopenEvent: (id: string) => Promise<void>;
 
   expenses: Expense[];
   categories: Category[];
@@ -53,7 +57,8 @@ interface AppContextType {
   deleteCategory: (id: string) => Promise<void>;
   
   settleBalance: (amount: number, fromUser: UserId, toUser: UserId, expenseIds: string[], eventId?: string) => Promise<void>;
-  
+  resetAllData: () => void;
+
   isDarkMode: boolean;
   toggleDarkMode: () => void;
   
@@ -78,16 +83,30 @@ const AppContext = createContext<AppContextType | undefined>(undefined);
 
 const LOCAL_STORAGE_KEYS = {
   CURRENT_USER_ID: 'duospend_current_user_id',
-  PROFILES: 'duospend_profiles',
-  EVENTS: 'duospend_events',
-  EXPENSES: 'duospend_expenses',
-  CATEGORIES: 'duospend_categories',
-  SETTLEMENTS: 'duospend_settlements',
+  PROFILES: 'duospend_profiles_v3',
+  EVENTS: 'duospend_events_v3',
+  EXPENSES: 'duospend_expenses_v3',
+  CATEGORIES: 'duospend_categories_v3',
+  SETTLEMENTS: 'duospend_settlements_v3',
   THEME: 'duospend_theme',
-  SELECTED_EVENT_ID: 'duospend_selected_event_id',
+  SELECTED_EVENT_ID: 'duospend_selected_event_id_v3',
+  PURGED_FLAG: 'duospend_purged_for_danko_simonka_v3',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Check and purge legacy sample data for Danko & Simonka clean start
+  if (typeof window !== 'undefined' && !localStorage.getItem(LOCAL_STORAGE_KEYS.PURGED_FLAG)) {
+    localStorage.removeItem('duospend_expenses');
+    localStorage.removeItem('duospend_profiles');
+    localStorage.removeItem('duospend_events');
+    localStorage.removeItem('duospend_settlements');
+    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify([]));
+    localStorage.setItem(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(DEFAULT_PROFILES));
+    localStorage.setItem(LOCAL_STORAGE_KEYS.EVENTS, JSON.stringify(DEFAULT_EVENTS));
+    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify([]));
+    localStorage.setItem(LOCAL_STORAGE_KEYS.PURGED_FLAG, 'true');
+  }
+
   // 1. Theme State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.THEME);
@@ -107,12 +126,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const toggleDarkMode = () => setIsDarkMode((prev) => !prev);
 
-  // 2. Profiles State
+  // 2. Profiles State (Danko & Simonka)
   const [profiles, setProfiles] = useState<UserProfile[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.PROFILES);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length >= 2) return parsed;
       } catch {}
     }
     return DEFAULT_PROFILES;
@@ -130,7 +150,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.EVENTS);
     if (saved) {
       try {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       } catch {}
     }
     return DEFAULT_EVENTS;
@@ -152,7 +173,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [preselectedEventIdForAdd, setPreselectedEventIdForAdd] = useState<string | null>(null);
 
-  // 5. Data State
+  // 5. Data State (Expenses initialized to EMPTY [])
   const [categories, setCategories] = useState<Category[]>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.CATEGORIES);
     if (saved) {
@@ -167,11 +188,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
     if (saved) {
       try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        return JSON.parse(saved);
       } catch {}
     }
-    return SAMPLE_EXPENSES;
+    return [];
   });
 
   const [settlements, setSettlements] = useState<Settlement[]>(() => {
@@ -196,6 +216,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const currentUser = profiles.find((p) => p.id === currentUserId) || profiles[0];
   const otherUser = profiles.find((p) => p.id !== currentUserId) || profiles[1];
 
+  const openEvents = events.filter((ev) => ev.status !== 'closed');
+  const closedEvents = events.filter((ev) => ev.status === 'closed');
+
   // Helper to persist to localStorage
   useEffect(() => {
     localStorage.setItem(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(profiles));
@@ -217,7 +240,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify(settlements));
   }, [settlements]);
 
-  // Set Current User with PIN
+  // Set Current User with optional PIN
   const setCurrentUserId = (id: UserId) => {
     const target = profiles.find((p) => p.id === id);
     if (target?.pin && target.pin.trim().length === 4) {
@@ -267,9 +290,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // Events CRUD
-  const addEvent = async (eventData: Omit<AppEvent, 'id' | 'created_at' | 'updated_at'>): Promise<AppEvent> => {
+  const addEvent = async (
+    eventData: Omit<AppEvent, 'id' | 'created_at' | 'updated_at' | 'status'> & { status?: 'active' | 'closed' }
+  ): Promise<AppEvent> => {
     const newEvent: AppEvent = {
       ...eventData,
+      status: eventData.status || 'active',
       id: 'event_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -286,8 +312,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           emoji: newEvent.emoji,
           color: newEvent.color,
           description: newEvent.description || null,
-          destination: newEvent.destination || null,
+          destination_country: newEvent.destination_country || null,
+          currency: newEvent.currency,
+          currency_symbol: newEvent.currency_symbol,
+          exchange_rate_to_eur: newEvent.exchange_rate_to_eur || 1,
           target_budget: newEvent.target_budget || null,
+          status: newEvent.status,
           created_at: newEvent.created_at,
           updated_at: newEvent.updated_at,
         });
@@ -317,9 +347,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Close Event (Ukončiť zber výdavkov)
+  const closeEvent = async (id: string) => {
+    const closedTimestamp = new Date().toISOString();
+    await updateEvent(id, {
+      status: 'closed',
+      closed_at: closedTimestamp,
+    });
+  };
+
+  // Re-open Event (Znovu otvoriť zber)
+  const reopenEvent = async (id: string) => {
+    await updateEvent(id, {
+      status: 'active',
+      closed_at: undefined,
+    });
+  };
+
   const deleteEvent = async (id: string) => {
     setEvents((prev) => prev.filter((ev) => ev.id !== id));
-    // Also remove associated expenses or reassign to another event
     setExpenses((prev) => prev.filter((exp) => exp.event_id !== id));
 
     const client = getSupabaseClient();
@@ -365,27 +411,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           emoji: e.emoji,
           color: e.color,
           description: e.description || undefined,
-          destination: e.destination || undefined,
+          destination_country: e.destination_country || undefined,
+          currency: e.currency || 'EUR',
+          currency_symbol: e.currency_symbol || '€',
+          exchange_rate_to_eur: e.exchange_rate_to_eur ? Number(e.exchange_rate_to_eur) : 1,
           target_budget: e.target_budget ? Number(e.target_budget) : undefined,
+          status: (e.status as 'active' | 'closed') || 'active',
           created_at: e.created_at,
           updated_at: e.updated_at || undefined,
+          closed_at: e.closed_at || undefined,
         }));
         setEvents(formattedEvents);
-      } else if (events.length > 0) {
-        // Seed default events
-        const evInserts = events.map((e) => ({
-          id: e.id,
-          name: e.name,
-          type: e.type,
-          emoji: e.emoji,
-          color: e.color,
-          description: e.description || null,
-          destination: e.destination || null,
-          target_budget: e.target_budget || null,
-          created_at: e.created_at,
-          updated_at: e.updated_at || e.created_at,
-        }));
-        await client.from('events').upsert(evInserts);
       }
 
       // 2. Fetch Expenses
@@ -396,10 +432,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       if (expErr) throw expErr;
 
-      if (expData && expData.length > 0) {
+      if (expData) {
         const formatted: Expense[] = expData.map((item: any) => ({
           id: item.id,
           amount: Number(item.amount),
+          original_amount: item.original_amount ? Number(item.original_amount) : undefined,
+          currency: item.currency || 'EUR',
+          currency_symbol: item.currency_symbol || '€',
+          exchange_rate: item.exchange_rate ? Number(item.exchange_rate) : 1,
           paid_by: item.paid_by as UserId,
           event_id: item.event_id || events[0]?.id || 'event_prerabka',
           category_id: item.category_id,
@@ -414,24 +454,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           updated_at: item.updated_at || undefined,
         }));
         setExpenses(formatted);
-      } else if (expenses.length > 0) {
-        const recordsToInsert = expenses.map((e) => ({
-          id: e.id,
-          amount: e.amount,
-          paid_by: e.paid_by,
-          event_id: e.event_id,
-          category_id: e.category_id,
-          subcategory: e.subcategory,
-          item_title: e.item_title || null,
-          note: e.note || null,
-          country: e.country || null,
-          date: e.date,
-          is_settled: e.is_settled,
-          settlement_id: e.settlement_id || null,
-          created_at: e.created_at,
-          updated_at: e.updated_at || null,
-        }));
-        await client.from('expenses').upsert(recordsToInsert);
       }
 
       // 3. Fetch Categories
@@ -481,7 +503,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         error: err.message || 'Chyba synchronizácie',
       }));
     }
-  }, [events, expenses, categories]);
+  }, [events]);
 
   // Initial Sync & Realtime listeners
   useEffect(() => {
@@ -491,12 +513,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (!client) return;
 
     const channel = client
-      .channel('duospend_realtime_events')
+      .channel('duospend_realtime_events_v3')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, (payload: any) => {
         if (payload.eventType === 'INSERT') {
           const newExp: Expense = {
             id: payload.new.id,
             amount: Number(payload.new.amount),
+            original_amount: payload.new.original_amount ? Number(payload.new.original_amount) : undefined,
+            currency: payload.new.currency || 'EUR',
+            currency_symbol: payload.new.currency_symbol || '€',
+            exchange_rate: payload.new.exchange_rate ? Number(payload.new.exchange_rate) : 1,
             paid_by: payload.new.paid_by,
             event_id: payload.new.event_id,
             category_id: payload.new.category_id,
@@ -518,6 +544,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           const updatedExp: Expense = {
             id: payload.new.id,
             amount: Number(payload.new.amount),
+            original_amount: payload.new.original_amount ? Number(payload.new.original_amount) : undefined,
+            currency: payload.new.currency || 'EUR',
+            currency_symbol: payload.new.currency_symbol || '€',
+            exchange_rate: payload.new.exchange_rate ? Number(payload.new.exchange_rate) : 1,
             paid_by: payload.new.paid_by,
             event_id: payload.new.event_id,
             category_id: payload.new.category_id,
@@ -559,7 +589,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // CRUD Operations for Expenses with UPDATED_AT TIMESTAMP
+  // CRUD Operations for Expenses
   const addExpense = async (
     data: Omit<Expense, 'id' | 'created_at' | 'updated_at' | 'is_settled' | 'settlement_id'>
   ): Promise<Expense> => {
@@ -580,6 +610,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         await client.from('expenses').insert({
           id: newExpense.id,
           amount: newExpense.amount,
+          original_amount: newExpense.original_amount || null,
+          currency: newExpense.currency || 'EUR',
+          currency_symbol: newExpense.currency_symbol || '€',
+          exchange_rate: newExpense.exchange_rate || 1,
           paid_by: newExpense.paid_by,
           event_id: newExpense.event_id,
           category_id: newExpense.category_id,
@@ -602,7 +636,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const updateExpense = async (id: string, updates: Partial<Expense>) => {
-    // Audit timestamp for change (Dátová pečiatka zmeny)
     const updateTimestamp = new Date().toISOString();
 
     setExpenses((prev) =>
@@ -757,6 +790,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  // Reset all data completely
+  const resetAllData = () => {
+    setExpenses([]);
+    setSettlements([]);
+    setEvents(DEFAULT_EVENTS);
+    setProfiles(DEFAULT_PROFILES);
+    setCategories(DEFAULT_CATEGORIES);
+    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify([]));
+    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify([]));
+    localStorage.setItem(LOCAL_STORAGE_KEYS.EVENTS, JSON.stringify(DEFAULT_EVENTS));
+    localStorage.setItem(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(DEFAULT_PROFILES));
+    localStorage.setItem(LOCAL_STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -769,11 +816,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         unlockWithPin,
         lockApp,
         events,
+        openEvents,
+        closedEvents,
         selectedEventId,
         setSelectedEventId,
         addEvent,
         updateEvent,
         deleteEvent,
+        closeEvent,
+        reopenEvent,
         expenses,
         categories,
         settlements,
@@ -786,6 +837,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateCategory,
         deleteCategory,
         settleBalance,
+        resetAllData,
         isDarkMode,
         toggleDarkMode,
         isAddModalOpen,
