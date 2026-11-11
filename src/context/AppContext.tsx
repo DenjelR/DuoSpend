@@ -881,7 +881,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        // Endpoint not responding with JSON (e.g. static hosting on Vercel)
+        setBackendSync((prev) => ({ ...prev, isSyncing: false }));
+        return false;
+      }
       const data = await res.json();
       setBackendSync({
         pairCode: code,
@@ -891,11 +896,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       return true;
     } catch (err: any) {
-      console.warn('Backend sync failed:', err);
+      console.warn('Backend sync failed (running in local mode):', err);
       setBackendSync((prev) => ({
         ...prev,
         isSyncing: false,
-        error: err.message || 'Chyba synchronizácie',
+        error: null,
       }));
       return false;
     }
@@ -906,9 +911,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setBackendSync((prev) => ({ ...prev, isSyncing: true, error: null }));
     try {
       const res = await fetch(`/api/sync/${encodeURIComponent(code)}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!res.ok || !contentType.includes('application/json')) {
+        // Endpoint not responding with JSON (e.g. static hosting on Vercel without server)
+        setBackendSync((prev) => ({ ...prev, isSyncing: false }));
+        return false;
+      }
       const result = await res.json();
-      if (result.success && result.data) {
+      if (result && result.success && result.data) {
         const d = result.data;
         if (Array.isArray(d.profiles) && d.profiles.length >= 2) setProfiles(d.profiles);
         if (Array.isArray(d.events)) setEvents(d.events);
@@ -924,11 +934,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       });
       return true;
     } catch (err: any) {
-      console.warn('Backend pull failed:', err);
+      console.warn('Backend pull failed (running in local mode):', err);
       setBackendSync((prev) => ({
         ...prev,
         isSyncing: false,
-        error: err.message || 'Chyba načítania',
+        error: null,
       }));
       return false;
     }

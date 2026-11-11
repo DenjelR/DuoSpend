@@ -26,6 +26,15 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
 
+    <!-- Suppress harmless Vite WebSocket unhandled rejections in preview iframes -->
+    <script>
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event && event.reason && (String(event.reason).includes('WebSocket') || String(event.reason).includes('failed to connect to websocket'))) {
+          event.preventDefault();
+        }
+      });
+    </script>
+
     <!-- Schema.org JSON-LD Structured Data -->
     <script type="application/ld+json">
     {
