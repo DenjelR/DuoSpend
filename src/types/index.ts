@@ -6,6 +6,8 @@ export interface UserProfile {
   avatarColor: string; // e.g., 'sky' or 'rose'
   emoji: string;
   pin?: string; // Optional 4 digit PIN
+  themeId?: string; // Profile card theme ID
+  themeGradient?: string; // Custom gradient styling
 }
 
 export type EventType = 'trip' | 'dates' | 'renovation' | 'household' | 'other';
@@ -77,4 +79,4 @@ export interface SupabaseConfig {
   configured: boolean;
 }
 
-export type ActiveTab = 'events' | 'transactions' | 'add' | 'categories' | 'settings';
+export type ActiveTab = 'open_events' | 'closed_events' | 'analytics' | 'categories' | 'settings';

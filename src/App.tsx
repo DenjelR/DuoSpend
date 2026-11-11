@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Header } from './components/Header';
 import { BottomNav } from './components/BottomNav';
-import { DashboardTab } from './components/DashboardTab';
-import { TransactionsTab } from './components/TransactionsTab';
+import { OpenEventsTab } from './components/OpenEventsTab';
+import { ClosedEventsTab } from './components/ClosedEventsTab';
+import { AnalyticsTab } from './components/AnalyticsTab';
 import { SettingsTab } from './components/SettingsTab';
 import { AddExpenseModal } from './components/AddExpenseModal';
 import { CategoriesModal } from './components/CategoriesModal';
@@ -13,7 +14,7 @@ import { VercelGuideModal } from './components/VercelGuideModal';
 import { PinLockScreen } from './components/PinLockScreen';
 
 const MainApp: React.FC = () => {
-  const { activeTab, isPinLocked } = useApp();
+  const { activeTab, setActiveTab, isPinLocked } = useApp();
 
   const [isCategoriesModalOpen, setIsCategoriesModalOpen] = useState(false);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
@@ -29,12 +30,16 @@ const MainApp: React.FC = () => {
       <Header
         onOpenSupabaseModal={() => setIsSupabaseModalOpen(true)}
         onOpenProfileModal={() => setIsProfileModalOpen(true)}
+        onOpenSettings={() => setActiveTab(activeTab === 'settings' ? 'open_events' : 'settings')}
       />
 
       {/* Main Content Viewport */}
       <main className="flex-1 max-w-lg w-full mx-auto px-4 pt-3 pb-8">
-        {activeTab === 'events' && <DashboardTab />}
-        {activeTab === 'transactions' && <TransactionsTab />}
+        {(activeTab === 'open_events' || !['closed_events', 'analytics', 'settings'].includes(activeTab)) && (
+          <OpenEventsTab />
+        )}
+        {activeTab === 'closed_events' && <ClosedEventsTab />}
+        {activeTab === 'analytics' && <AnalyticsTab />}
         {activeTab === 'settings' && (
           <SettingsTab
             onOpenProfilesModal={() => setIsProfileModalOpen(true)}

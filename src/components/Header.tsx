@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Moon, Sun, Cloud, CloudOff, RefreshCw, ChevronDown, Lock, Check } from 'lucide-react';
+import { Moon, Sun, Cloud, CloudOff, RefreshCw, ChevronDown, Lock, Check, Settings } from 'lucide-react';
 import { UserId } from '../types';
 
 interface HeaderProps {
   onOpenSupabaseModal: () => void;
   onOpenProfileModal: () => void;
+  onOpenSettings: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ onOpenSupabaseModal, onOpenProfileModal }) => {
+export const Header: React.FC<HeaderProps> = ({ onOpenSupabaseModal, onOpenProfileModal, onOpenSettings }) => {
   const {
     currentUser,
     otherUser,
@@ -152,6 +153,16 @@ export const Header: React.FC<HeaderProps> = ({ onOpenSupabaseModal, onOpenProfi
             aria-label="Toggle theme"
           >
             {isDarkMode ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-slate-600" />}
+          </button>
+
+          {/* Settings Button */}
+          <button
+            onClick={onOpenSettings}
+            className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title="Nastavenia a cloud ukladanie"
+            aria-label="Nastavenia"
+          >
+            <Settings className="w-4 h-4" />
           </button>
         </div>
       </div>

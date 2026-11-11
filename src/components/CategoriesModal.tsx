@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { X, Plus, Trash2, Edit2, Check, Tag } from 'lucide-react';
-import { Category } from '../types';
+import { Category, EventType } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 
 interface CategoriesModalProps {
@@ -48,6 +48,7 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({ isOpen, onClos
   const [newCatName, setNewCatName] = useState('');
   const [newCatIcon, setNewCatIcon] = useState('Tag');
   const [newCatColor, setNewCatColor] = useState('#0284c7');
+  const [newCatEventType, setNewCatEventType] = useState<EventType | 'all'>('household');
   const [newSubcatInput, setNewSubcatInput] = useState('');
   const [newSubcatsList, setNewSubcatsList] = useState<string[]>([]);
 
@@ -100,12 +101,14 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({ isOpen, onClos
       color: newCatColor,
       subcategories: newSubcatsList.length > 0 ? newSubcatsList : ['Všeobecné'],
       isSystem: false,
+      defaultEventType: newCatEventType === 'all' ? undefined : (newCatEventType as EventType),
     });
 
     // Reset form
     setNewCatName('');
     setNewCatIcon('Tag');
     setNewCatColor('#0284c7');
+    setNewCatEventType('household');
     setNewSubcatsList([]);
     setIsAddingNew(false);
   };
@@ -175,6 +178,35 @@ export const CategoriesModal: React.FC<CategoriesModalProps> = ({ isOpen, onClos
                 onChange={(e) => setNewCatName(e.target.value)}
                 className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
               />
+
+              {/* Event type association */}
+              <div>
+                <span className="text-[11px] font-semibold text-slate-400 block mb-1.5">
+                  Priradiť k druhu eventu:
+                </span>
+                <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3">
+                  {[
+                    { id: 'trip', label: '✈️ Výlet a cestovanie' },
+                    { id: 'dates', label: '🍷 Spoločné rande' },
+                    { id: 'renovation', label: '🔨 Prerábanie bytu' },
+                    { id: 'household', label: '🏠 Domácnosť' },
+                    { id: 'all', label: '🌐 Všetky eventy' },
+                  ].map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setNewCatEventType(t.id as any)}
+                      className={`px-2.5 py-1.5 rounded-xl text-[11px] font-bold border transition-all text-left truncate ${
+                        newCatEventType === t.id
+                          ? 'bg-sky-600 text-white border-sky-600 shadow-xs'
+                          : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
 
               {/* Color picker */}
               <div>

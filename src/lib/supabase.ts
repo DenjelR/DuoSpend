@@ -1,27 +1,51 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { Expense, Category, Settlement, UserProfile, AppEvent } from '../types';
 
+export function isValidHttpUrl(string: string): boolean {
+  if (!string || typeof string !== 'string') return false;
+  try {
+    const url = new URL(string.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:';
+  } catch {
+    return false;
+  }
+}
+
 // Retrieve credentials from Vite env or local storage override
 export function getSupabaseCredentials(): { url: string; anonKey: string; isConfigured: boolean } {
-  const envUrl = (import.meta.env.VITE_SUPABASE_URL as string) || '';
-  const envKey = (import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '';
+  const envUrl = ((import.meta.env.VITE_SUPABASE_URL as string) || '').trim();
+  const envKey = ((import.meta.env.VITE_SUPABASE_ANON_KEY as string) || '').trim();
 
-  const storedCustom = localStorage.getItem('duospend_supabase_custom_config');
-  if (storedCustom) {
-    try {
-      const parsed = JSON.parse(storedCustom);
-      if (parsed.url && parsed.anonKey) {
-        return { url: parsed.url, anonKey: parsed.anonKey, isConfigured: true };
+  if (typeof window !== 'undefined') {
+    const storedCustom = localStorage.getItem('duospend_supabase_custom_config');
+    if (storedCustom) {
+      try {
+        const parsed = JSON.parse(storedCustom);
+        const customUrl = (parsed.url || '').trim();
+        const customKey = (parsed.anonKey || '').trim();
+        if (isValidHttpUrl(customUrl) && customKey) {
+          return { url: customUrl, anonKey: customKey, isConfigured: true };
+        } else if (storedCustom && !isValidHttpUrl(customUrl)) {
+          // Clean up invalid custom config
+          localStorage.removeItem('duospend_supabase_custom_config');
+        }
+      } catch {
+        localStorage.removeItem('duospend_supabase_custom_config');
       }
-    } catch {
-      // ignore
     }
   }
 
-  const isConfigured = Boolean(envUrl && envKey && !envUrl.includes('your-project') && !envKey.includes('your-anon'));
+  const isConfigured = Boolean(
+    isValidHttpUrl(envUrl) &&
+    envKey &&
+    !envUrl.includes('your-project') &&
+    !envKey.includes('your-anon') &&
+    !envUrl.includes('vas-projekt')
+  );
+
   return {
-    url: envUrl,
-    anonKey: envKey,
+    url: isConfigured ? envUrl : '',
+    anonKey: isConfigured ? envKey : '',
     isConfigured,
   };
 }
@@ -33,7 +57,7 @@ let lastKey = '';
 export function getSupabaseClient(): SupabaseClient | null {
   const { url, anonKey, isConfigured } = getSupabaseCredentials();
 
-  if (!isConfigured || !url || !anonKey) {
+  if (!isConfigured || !url || !anonKey || !isValidHttpUrl(url)) {
     return null;
   }
 
@@ -53,7 +77,7 @@ export function getSupabaseClient(): SupabaseClient | null {
     lastKey = anonKey;
     return cachedClient;
   } catch (err) {
-    console.error('Chyba inicializácie Supabase klienta:', err);
+    console.warn('Supabase klient nie je inicializovaný (lokálny offline režim):', err);
     return null;
   }
 }
@@ -61,11 +85,15 @@ export function getSupabaseClient(): SupabaseClient | null {
 // Test Supabase connection
 export async function testSupabaseConnection(url?: string, key?: string): Promise<{ success: boolean; message: string }> {
   try {
-    const targetUrl = url || getSupabaseCredentials().url;
-    const targetKey = key || getSupabaseCredentials().anonKey;
+    const targetUrl = (url || getSupabaseCredentials().url || '').trim();
+    const targetKey = (key || getSupabaseCredentials().anonKey || '').trim();
 
     if (!targetUrl || !targetKey) {
       return { success: false, message: 'Chýba Supabase URL alebo Anon kľúč.' };
+    }
+
+    if (!isValidHttpUrl(targetUrl)) {
+      return { success: false, message: 'Supabase URL musí byť platná adresa začínajúca na https:// (napr. https://vas-projekt.supabase.co).' };
     }
 
     const testClient = createClient(targetUrl, targetKey);

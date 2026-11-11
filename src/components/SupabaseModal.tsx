@@ -15,6 +15,7 @@ import {
   SUPABASE_SQL_SETUP,
   getSupabaseCredentials,
   testSupabaseConnection,
+  isValidHttpUrl,
 } from '../lib/supabase';
 
 interface SupabaseModalProps {
@@ -41,13 +42,27 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
   };
 
   const handleSaveCustom = async () => {
-    if (customUrl.trim() && customKey.trim()) {
+    let trimmedUrl = customUrl.trim();
+    const trimmedKey = customKey.trim();
+
+    if (trimmedUrl && !trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+      trimmedUrl = 'https://' + trimmedUrl;
+      setCustomUrl(trimmedUrl);
+    }
+
+    if (trimmedUrl && trimmedKey) {
+      if (!isValidHttpUrl(trimmedUrl)) {
+        setTestResult({ success: false, message: 'URL adresa musí začínať s https:// (napr. https://vas-projekt.supabase.co).' });
+        return;
+      }
       localStorage.setItem(
         'duospend_supabase_custom_config',
-        JSON.stringify({ url: customUrl.trim(), anonKey: customKey.trim() })
+        JSON.stringify({ url: trimmedUrl, anonKey: trimmedKey })
       );
+      setTestResult({ success: true, message: 'Nastavenia uložené! Prebieha pripojenie...' });
     } else {
       localStorage.removeItem('duospend_supabase_custom_config');
+      setTestResult({ success: true, message: 'Nastavenia vymazané. Aplikácia pokračuje v lokálnom / serverovom režime.' });
     }
     await refreshSupabaseSync();
   };
@@ -55,7 +70,12 @@ export const SupabaseModal: React.FC<SupabaseModalProps> = ({ isOpen, onClose })
   const handleTest = async () => {
     setIsTesting(true);
     setTestResult(null);
-    const res = await testSupabaseConnection(customUrl.trim(), customKey.trim());
+    let trimmedUrl = customUrl.trim();
+    if (trimmedUrl && !trimmedUrl.startsWith('http://') && !trimmedUrl.startsWith('https://')) {
+      trimmedUrl = 'https://' + trimmedUrl;
+      setCustomUrl(trimmedUrl);
+    }
+    const res = await testSupabaseConnection(trimmedUrl, customKey.trim());
     setTestResult(res);
     setIsTesting(false);
   };

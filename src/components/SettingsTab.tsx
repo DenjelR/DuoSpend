@@ -16,8 +16,14 @@ import {
   History,
   Lock,
   Trash2,
+  Share2,
+  Copy,
+  Check,
+  RefreshCw,
+  Server,
 } from 'lucide-react';
 import { usePWAInstall } from '../hooks/usePWAInstall';
+import { DEFAULT_PROFILES } from '../lib/defaultData';
 
 interface SettingsTabProps {
   onOpenProfilesModal: () => void;
@@ -44,6 +50,10 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
     toggleDarkMode,
     supabaseStatus,
     resetAllData,
+    backendSync,
+    setPairCode,
+    syncToBackend,
+    pullFromBackend,
   } = useApp();
 
   const { isInstallable, isInstalled, isIOS, install } = usePWAInstall();
@@ -51,8 +61,51 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
   const [resetSuccess, setResetSuccess] = useState(false);
   const [showWipeConfirm, setShowWipeConfirm] = useState(false);
 
-  const danko = profiles.find((p) => p.id === 'user_1') || profiles[0];
-  const simonka = profiles.find((p) => p.id === 'user_2') || profiles[1];
+  // Online backend sync state
+  const [customCodeInput, setCustomCodeInput] = useState(backendSync.pairCode || 'DANKO-SIMI');
+  const [isEditingCode, setIsEditingCode] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [syncFeedback, setSyncFeedback] = useState<string | null>(null);
+
+  const danko = profiles.find((p) => p.id === 'user_1') || profiles[0] || DEFAULT_PROFILES[0];
+  const simonka = profiles.find((p) => p.id === 'user_2') || profiles[1] || DEFAULT_PROFILES[1];
+
+  const handleCopyPairLink = () => {
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const shareUrl = `${origin}?pair=${encodeURIComponent(backendSync.pairCode)}`;
+    navigator.clipboard.writeText(shareUrl);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2500);
+  };
+
+  const handleSavePairCode = () => {
+    if (customCodeInput.trim()) {
+      setPairCode(customCodeInput.trim());
+      setIsEditingCode(false);
+      setSyncFeedback('Párovací kód bol zmenený');
+      setTimeout(() => setSyncFeedback(null), 2500);
+    }
+  };
+
+  const handleManualSync = async () => {
+    const ok = await syncToBackend();
+    if (ok) {
+      setSyncFeedback('Dáta úspešne odoslané do cloudu!');
+    } else {
+      setSyncFeedback('Chyba pri ukladaní do cloudu');
+    }
+    setTimeout(() => setSyncFeedback(null), 3000);
+  };
+
+  const handleManualPull = async () => {
+    const ok = await pullFromBackend();
+    if (ok) {
+      setSyncFeedback('Najnovšie dáta stiahnuté z cloudu!');
+    } else {
+      setSyncFeedback('Chyba pri sťahovaní z cloudu');
+    }
+    setTimeout(() => setSyncFeedback(null), 3000);
+  };
 
   // Export full JSON backup
   const handleExportBackup = () => {
@@ -122,6 +175,125 @@ export const SettingsTab: React.FC<SettingsTabProps> = ({
         >
           Profily
         </button>
+      </div>
+
+      {/* Online Sharing & Backend Sync Card */}
+      <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 border border-slate-200/80 dark:border-slate-800 shadow-sm space-y-3.5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-sky-500 to-indigo-600 text-white flex items-center justify-center shadow-sm">
+              <Server className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-xs font-bold text-slate-900 dark:text-white">
+                Online zdieľanie a cloud ukladanie
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                Párovanie dvoch telefónov cez backend server
+              </p>
+            </div>
+          </div>
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-700 dark:text-sky-300">
+            Aktívne
+          </span>
+        </div>
+
+        {/* Current pair code & Share link */}
+        <div className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 space-y-2.5">
+          <div className="flex items-center justify-between text-xs">
+            <span className="text-slate-500 font-medium text-[11px]">Váš spoločný párovací kód:</span>
+            {!isEditingCode ? (
+              <div className="flex items-center gap-2">
+                <span className="font-mono font-extrabold tracking-wider text-sky-600 dark:text-sky-400 text-sm">
+                  {backendSync.pairCode}
+                </span>
+                <button
+                  onClick={() => {
+                    setCustomCodeInput(backendSync.pairCode);
+                    setIsEditingCode(true);
+                  }}
+                  className="text-[10px] text-slate-400 hover:text-slate-600 underline"
+                >
+                  Zmeniť
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="text"
+                  value={customCodeInput}
+                  onChange={(e) => setCustomCodeInput(e.target.value.toUpperCase())}
+                  className="w-28 px-2 py-1 text-xs font-mono font-bold uppercase rounded-lg border border-sky-400 bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                  placeholder="KÓD"
+                />
+                <button
+                  onClick={handleSavePairCode}
+                  className="px-2 py-1 rounded-lg bg-sky-600 text-white text-[10px] font-bold"
+                >
+                  Uložiť
+                </button>
+                <button
+                  onClick={() => setIsEditingCode(false)}
+                  className="text-[10px] text-slate-400"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </div>
+
+          <button
+            onClick={handleCopyPairLink}
+            className="w-full py-2 px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700/60 text-slate-700 dark:text-slate-200 font-semibold text-xs flex items-center justify-center gap-2 transition-all active:scale-95 shadow-xs"
+          >
+            {copiedLink ? (
+              <>
+                <Check className="w-3.5 h-3.5 text-emerald-500" />
+                <span className="text-emerald-600 dark:text-emerald-400">Odkaz skopírovaný pre partnera!</span>
+              </>
+            ) : (
+              <>
+                <Share2 className="w-3.5 h-3.5 text-sky-600" />
+                <span>Kopírovať odkaz s kódom pre Simonku / Danka</span>
+              </>
+            )}
+          </button>
+        </div>
+
+        {/* Sync Actions */}
+        <div className="flex gap-2">
+          <button
+            onClick={handleManualSync}
+            disabled={backendSync.isSyncing}
+            className="flex-1 py-2.5 px-3 rounded-xl bg-sky-600 hover:bg-sky-500 disabled:opacity-50 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-all active:scale-95 shadow-xs"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${backendSync.isSyncing ? 'animate-spin' : ''}`} />
+            <span>Odoslať do cloudu</span>
+          </button>
+
+          <button
+            onClick={handleManualPull}
+            disabled={backendSync.isSyncing}
+            className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-50 text-slate-700 dark:text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Stiahnuť z cloudu</span>
+          </button>
+        </div>
+
+        {/* Status info & feedback */}
+        <div className="flex items-center justify-between text-[11px] text-slate-400 px-1">
+          <span>
+            {backendSync.lastSynced
+              ? `Posledná synchronizácia: ${backendSync.lastSynced}`
+              : 'Pripravené na synchronizáciu'}
+          </span>
+          {syncFeedback && (
+            <span className="text-emerald-600 dark:text-emerald-400 font-semibold animate-in fade-in duration-150">
+              {syncFeedback}
+            </span>
+          )}
+        </div>
       </div>
 
       {/* 2. Primary Configuration Group */}

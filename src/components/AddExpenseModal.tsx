@@ -1,10 +1,32 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
-import { X, Calendar, Globe, Check, Plus, Coins, ArrowRight, FolderPlus } from 'lucide-react';
-import { UserId, Expense, EventType, AppEvent } from '../types';
+import {
+  X,
+  Calendar,
+  Globe,
+  Check,
+  Plus,
+  Coins,
+  ArrowRight,
+  ArrowLeft,
+  FolderPlus,
+  Lock,
+} from 'lucide-react';
+import { UserId, Expense, EventType, AppEvent, Category } from '../types';
 import { CategoryIcon } from './CategoryIcon';
 import { COUNTRY_CURRENCY_MAP, getCurrencyForCountry } from '../lib/currencies';
 import { CreateEventModal } from './CreateEventModal';
+
+const COMMON_TRIP_CURRENCIES = [
+  { code: 'EUR', symbol: '€', label: 'EUR (€)' },
+  { code: 'CZK', symbol: 'Kč', label: 'Česká koruna (CZK / Kč)' },
+  { code: 'PLN', symbol: 'zł', label: 'Poľský zlotý (PLN / zł)' },
+  { code: 'HUF', symbol: 'Ft', label: 'Maďarský forint (HUF / Ft)' },
+  { code: 'GBP', symbol: '£', label: 'Britská libra (GBP / £)' },
+  { code: 'USD', symbol: '$', label: 'Americký dolár (USD / $)' },
+  { code: 'CHF', symbol: 'CHF', label: 'Švajčiarsky frank (CHF)' },
+  { code: 'JPY', symbol: '¥', label: 'Japonský jen (JPY / ¥)' },
+];
 
 export const AddExpenseModal: React.FC = () => {
   const {
@@ -26,6 +48,9 @@ export const AddExpenseModal: React.FC = () => {
 
   const [isInlineCreateEventOpen, setIsInlineCreateEventOpen] = useState(false);
 
+  // Progressive Wizard Step: 1 = Event, 2 = PaidBy, 3 = Category & Currency, 4 = Amount & Date
+  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+
   // Form states
   const [eventId, setEventId] = useState<string>('');
   const [paidBy, setPaidBy] = useState<UserId>(currentUser.id);
@@ -44,6 +69,43 @@ export const AddExpenseModal: React.FC = () => {
 
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // Selectable events: open events + current editing event if closed
+  const selectableEvents: AppEvent[] = useMemo(() => {
+    if (editingExpense) {
+      const currentEv = events.find((e) => e.id === editingExpense.event_id);
+      if (currentEv && currentEv.status === 'closed') {
+        const others = openEvents.filter((e) => e.id !== currentEv.id);
+        return [currentEv, ...others];
+      }
+    }
+    return openEvents.length > 0 ? openEvents : events;
+  }, [events, openEvents, editingExpense]);
+
+  // Selected event object
+  const selectedEvent = events.find((e) => e.id === eventId) || selectableEvents[0];
+  const isTrip = selectedEvent?.type === 'trip';
+
+  // Filter categories strictly according to the selected event type!
+  const matchingCategories = useMemo(() => {
+    if (!selectedEvent) return categories;
+
+    if (selectedEvent.type === 'trip') {
+      return categories.filter((c) => c.defaultEventType === 'trip');
+    }
+    if (selectedEvent.type === 'dates') {
+      return categories.filter((c) => c.defaultEventType === 'dates');
+    }
+    if (selectedEvent.type === 'renovation') {
+      return categories.filter((c) => c.defaultEventType === 'renovation');
+    }
+    if (selectedEvent.type === 'household') {
+      return categories.filter((c) => c.defaultEventType === 'household');
+    }
+    return categories;
+  }, [categories, selectedEvent]);
+
+  const selectedCategory = categories.find((c) => c.id === categoryId) || matchingCategories[0];
 
   // Initialize
   useEffect(() => {
@@ -68,6 +130,7 @@ export const AddExpenseModal: React.FC = () => {
         setExchangeRate(1);
         setAmountInCurrency(editingExpense.amount.toString());
       }
+      setStep(4); // When editing, jump straight to Amount & Details
     } else {
       const today = new Date();
       const yyyy = today.getFullYear();
@@ -83,6 +146,8 @@ export const AddExpenseModal: React.FC = () => {
       setItemTitle('');
       setNote('');
       setDateStr(`${yyyy}-${mm}-${dd}`);
+      setAmountInCurrency('');
+      setStep(1);
 
       // Sync event settings
       const ev = events.find((e) => e.id === initialEventId);
@@ -91,28 +156,19 @@ export const AddExpenseModal: React.FC = () => {
     setErrorMessage(null);
   }, [editingExpense, isAddModalOpen, currentUser, categories, events, selectedEventId, preselectedEventIdForAdd, openEvents]);
 
-  // Selectable events: open events + current editing event if closed
-  const selectableEvents: AppEvent[] = useMemo(() => {
-    if (editingExpense) {
-      const currentEv = events.find((e) => e.id === editingExpense.event_id);
-      if (currentEv && currentEv.status === 'closed') {
-        const others = openEvents.filter((e) => e.id !== currentEv.id);
-        return [currentEv, ...others];
-      }
-    }
-    return openEvents.length > 0 ? openEvents : events;
-  }, [events, openEvents, editingExpense]);
-
-  const applyEventSettings = (ev?: typeof events[0]) => {
+  const applyEventSettings = (ev?: AppEvent) => {
     if (!ev) return;
-    if (ev.destination_country) {
-      setCountry(ev.destination_country);
-    }
-    if (ev.currency) {
-      setCurrencyCode(ev.currency);
-      setCurrencySymbol(ev.currency_symbol || '€');
-      setExchangeRate(ev.exchange_rate_to_eur || 1);
+
+    if (ev.type === 'trip') {
+      const countryVal = ev.destination_country || 'Česko';
+      setCountry(countryVal);
+      const curr = getCurrencyForCountry(countryVal);
+      setCurrencyCode(curr.currencyCode);
+      setCurrencySymbol(curr.currencySymbol);
+      setExchangeRate(curr.defaultRateToEur);
     } else {
+      // Dates, Renovation, Household ALWAYS strictly EUR (€)
+      setCountry('');
       setCurrencyCode('EUR');
       setCurrencySymbol('€');
       setExchangeRate(1);
@@ -129,10 +185,16 @@ export const AddExpenseModal: React.FC = () => {
     }
   };
 
-  const handleEventChange = (newEvId: string) => {
+  const handleSelectEvent = (newEvId: string) => {
     setEventId(newEvId);
     const ev = events.find((e) => e.id === newEvId);
     applyEventSettings(ev);
+    setStep(2); // Auto advance to Step 2
+  };
+
+  const handleSelectPaidBy = (userId: UserId) => {
+    setPaidBy(userId);
+    setStep(3); // Auto advance to Step 3
   };
 
   const handleCountrySelect = (chosenCountry: string) => {
@@ -143,13 +205,21 @@ export const AddExpenseModal: React.FC = () => {
     setExchangeRate(curr.defaultRateToEur);
   };
 
-  const selectedCategory = categories.find((c) => c.id === categoryId);
-  const selectedEvent = events.find((e) => e.id === eventId);
-  const isTrip = selectedEvent?.type === 'trip' || selectedCategory?.defaultEventType === 'trip';
+  const handleCurrencySelect = (code: string, symbol: string) => {
+    setCurrencyCode(code);
+    setCurrencySymbol(symbol);
+    if (code === 'EUR') {
+      setExchangeRate(1);
+    } else {
+      const curr = COUNTRY_CURRENCY_MAP.find((c) => c.currencyCode === code);
+      if (curr) setExchangeRate(curr.defaultRateToEur);
+    }
+  };
 
   // Calculate EUR amount from currency
   const numericInput = parseFloat(amountInCurrency.replace(',', '.')) || 0;
-  const calculatedEurAmount = currencyCode === 'EUR' ? numericInput : (exchangeRate > 0 ? numericInput / exchangeRate : numericInput);
+  const calculatedEurAmount =
+    currencyCode === 'EUR' ? numericInput : exchangeRate > 0 ? numericInput / exchangeRate : numericInput;
 
   const handleQuickAddAmount = (addVal: number) => {
     const current = parseFloat(amountInCurrency) || 0;
@@ -169,6 +239,7 @@ export const AddExpenseModal: React.FC = () => {
     setIsAddModalOpen(false);
     setEditingExpense(null);
     setPreselectedEventIdForAdd(null);
+    setStep(1);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -204,7 +275,7 @@ export const AddExpenseModal: React.FC = () => {
         subcategory: subcategory || selectedCategory?.subcategories[0] || 'Všeobecné',
         item_title: itemTitle.trim() || undefined,
         note: note.trim() || undefined,
-        country: country || undefined,
+        country: isTrip ? (country || undefined) : undefined,
         date: dateStr,
       };
 
@@ -235,13 +306,13 @@ export const AddExpenseModal: React.FC = () => {
           <div className="w-12 h-1.5 bg-slate-300 dark:bg-slate-700 rounded-full mx-auto mt-3 sm:hidden" />
 
           {/* Modal Header */}
-          <div className="flex items-center justify-between px-5 pt-3 pb-3 border-b border-slate-100 dark:border-slate-800/80">
+          <div className="flex items-center justify-between px-5 pt-3 pb-3 border-b border-slate-100 dark:border-slate-800">
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">
-                {editingExpense ? 'Upraviť výdavok' : 'Nový výdavok'}
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
+                {editingExpense ? 'Upraviť výdavok' : 'Nový spoločný výdavok'}
               </h2>
               <span className="text-[11px] text-slate-400">
-                Párové sledovanie pre Danka a Simonku
+                Postupný výber · {selectedEvent ? `${selectedEvent.emoji} ${selectedEvent.name}` : 'Danko & Simonka'}
               </span>
             </div>
             <button
@@ -252,355 +323,469 @@ export const AddExpenseModal: React.FC = () => {
             </button>
           </div>
 
+          {/* 4-Step Wizard Progress Bar */}
+          <div className="px-5 pt-3 pb-2 border-b border-slate-100 dark:border-slate-800/60 bg-slate-50/60 dark:bg-slate-950/40">
+            <div className="flex items-center justify-between text-[11px] font-bold">
+              <button
+                type="button"
+                onClick={() => setStep(1)}
+                className={`flex items-center gap-1.5 transition-colors ${
+                  step === 1 ? 'text-sky-600 dark:text-sky-400 font-extrabold' : 'text-slate-400'
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                  step >= 1 ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>1</span>
+                <span>Projekt</span>
+              </button>
+
+              <span className="text-slate-300 dark:text-slate-700">→</span>
+
+              <button
+                type="button"
+                onClick={() => eventId && setStep(2)}
+                disabled={!eventId}
+                className={`flex items-center gap-1.5 transition-colors ${
+                  step === 2 ? 'text-sky-600 dark:text-sky-400 font-extrabold' : 'text-slate-400'
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                  step >= 2 ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>2</span>
+                <span>Kto platil</span>
+              </button>
+
+              <span className="text-slate-300 dark:text-slate-700">→</span>
+
+              <button
+                type="button"
+                onClick={() => eventId && setStep(3)}
+                disabled={!eventId}
+                className={`flex items-center gap-1.5 transition-colors ${
+                  step === 3 ? 'text-sky-600 dark:text-sky-400 font-extrabold' : 'text-slate-400'
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                  step >= 3 ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>3</span>
+                <span>Kategória</span>
+              </button>
+
+              <span className="text-slate-300 dark:text-slate-700">→</span>
+
+              <button
+                type="button"
+                onClick={() => eventId && setStep(4)}
+                disabled={!eventId}
+                className={`flex items-center gap-1.5 transition-colors ${
+                  step === 4 ? 'text-sky-600 dark:text-sky-400 font-extrabold' : 'text-slate-400'
+                }`}
+              >
+                <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
+                  step >= 4 ? 'bg-sky-600 text-white' : 'bg-slate-200 text-slate-600'
+                }`}>4</span>
+                <span>Suma</span>
+              </button>
+            </div>
+          </div>
+
           {/* Form Body */}
-          <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4.5 no-scrollbar text-xs">
+          <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 no-scrollbar text-xs">
             {errorMessage && (
               <div className="p-3 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-xl text-rose-700 dark:text-rose-300 font-semibold">
                 {errorMessage}
               </div>
             )}
 
-            {/* 1. OTVORENÉ EVENTY ALEBO VYTVORIŤ NOVÝ */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">
-                  1. Otvorené projekty / eventy
-                </label>
-                <button
-                  type="button"
-                  onClick={() => setIsInlineCreateEventOpen(true)}
-                  className="flex items-center gap-1 text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:underline"
-                >
-                  <FolderPlus className="w-3.5 h-3.5" />
-                  <span>+ Vytvoriť nový</span>
-                </button>
-              </div>
-
-              {selectableEvents.length === 0 ? (
-                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 rounded-xl text-center">
-                  <p className="text-slate-600 dark:text-slate-300 mb-2 font-medium">
-                    Nemáte žiadny projekt.
-                  </p>
+            {/* STEP 1: VOĽBA EVENTU */}
+            {step === 1 && (
+              <div className="space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                      1. Krok: Vyberte projekt / event
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Do ktorého projektu chcete výdavok zapísať?
+                    </p>
+                  </div>
                   <button
                     type="button"
                     onClick={() => setIsInlineCreateEventOpen(true)}
-                    className="px-3 py-1.5 bg-sky-600 text-white font-bold rounded-lg text-xs"
+                    className="flex items-center gap-1 text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:underline"
                   >
-                    Vytvoriť prvý projekt
+                    <FolderPlus className="w-3.5 h-3.5" />
+                    <span>+ Nový projekt</span>
                   </button>
                 </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-2">
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {selectableEvents.map((ev) => {
                     const isSelected = eventId === ev.id;
                     const isClosed = ev.status === 'closed';
+
                     return (
                       <button
                         type="button"
                         key={ev.id}
-                        onClick={() => handleEventChange(ev.id)}
-                        className={`p-2.5 rounded-2xl border text-left flex items-center gap-2.5 transition-all ${
+                        onClick={() => handleSelectEvent(ev.id)}
+                        className={`p-3 rounded-2xl border text-left flex items-center gap-3 transition-all ${
                           isSelected
-                            ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-950/40 text-slate-900 dark:text-white font-bold ring-2 ring-sky-500/20 shadow-xs'
-                            : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 hover:border-slate-300'
+                            ? 'border-sky-500 bg-sky-50/80 dark:bg-sky-950/50 text-slate-900 dark:text-white font-bold ring-2 ring-sky-500/20 shadow-xs'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-slate-300 hover:bg-slate-100'
                         }`}
                       >
-                        <span className="text-xl shrink-0">{ev.emoji}</span>
-                        <div className="min-w-0">
-                          <span className="text-xs truncate block">{ev.name}</span>
+                        <span className="text-2xl shrink-0 p-1 rounded-xl bg-white dark:bg-slate-700 shadow-xs">
+                          {ev.emoji}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <span className="text-xs font-bold truncate block">{ev.name}</span>
                           <span className="text-[10px] text-slate-400 block truncate">
-                            {isClosed ? '🔒 Ukončený' : ev.destination_country ? `📍 ${ev.destination_country}` : (ev.type === 'dates' ? 'Rande' : 'Projekt')}
+                            {isClosed ? '🔒 Ukončený projekt' : ev.destination_country ? `📍 ${ev.destination_country}` : (ev.type === 'dates' ? 'Spoločné rande' : 'Domácnosť & projekt')}
                           </span>
                         </div>
+                        <ArrowRight className="w-4 h-4 text-slate-400 shrink-0" />
                       </button>
                     );
                   })}
                 </div>
-              )}
-            </div>
-
-            {/* 2. KTO PLATIL (DANKO vs SIMONKA) */}
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5 uppercase tracking-wider text-[11px]">
-                2. Kto to platil?
-              </label>
-              <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100 dark:bg-slate-800/80 rounded-2xl">
-                {profiles.map((p) => {
-                  const isSelected = paidBy === p.id;
-                  return (
-                    <button
-                      type="button"
-                      key={p.id}
-                      onClick={() => setPaidBy(p.id)}
-                      className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl transition-all ${
-                        isSelected
-                          ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-bold'
-                          : 'text-slate-600 dark:text-slate-400 font-medium'
-                      }`}
-                      style={isSelected ? { boxShadow: `0 0 0 2px ${p.avatarColor}` } : {}}
-                    >
-                      <span className="text-base">{p.emoji}</span>
-                      <span className="text-xs truncate font-bold">{p.name}</span>
-                      {isSelected && <Check className="w-3.5 h-3.5 text-emerald-500 ml-1" />}
-                    </button>
-                  );
-                })}
               </div>
-            </div>
+            )}
 
-            {/* 3. KATEGORICKÉ ČLENENIE (VÝLET / RANDE / PRERÁBKA / DOMÁCNOSŤ) */}
-            <div className="space-y-2">
-              <label className="block font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">
-                3. Kategória a Podkategória
-              </label>
+            {/* STEP 2: KTO PLATIL (DANKO vs SIMONKA) */}
+            {step === 2 && (
+              <div className="space-y-3 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                      2. Krok: Kto to platil?
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Vyberte partnera, ktorý za položku zaplatil
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStep(1)}
+                    className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Späť
+                  </button>
+                </div>
 
-              {/* 4 Hlavné Kategórie */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                {categories.map((cat) => {
-                  const isSelected = categoryId === cat.id;
-                  return (
-                    <button
-                      type="button"
-                      key={cat.id}
-                      onClick={() => {
-                        setCategoryId(cat.id);
-                        setSubcategory(cat.subcategories[0] || '');
-                        if (cat.defaultEventType === 'trip' && !country) {
-                          handleCountrySelect('Česko');
-                        }
-                      }}
-                      className={`p-2.5 rounded-xl border flex flex-col items-center gap-1.5 text-center transition-all ${
-                        isSelected
-                          ? 'border-sky-500 bg-sky-50/70 dark:bg-sky-950/40 text-slate-900 dark:text-white font-bold ring-2 ring-sky-500/20 shadow-xs'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400'
-                      }`}
-                    >
-                      <div
-                        className="w-7 h-7 rounded-lg flex items-center justify-center text-white shrink-0 shadow-xs"
-                        style={{ backgroundColor: cat.color }}
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  {profiles.map((p) => {
+                    const isSelected = paidBy === p.id;
+                    return (
+                      <button
+                        type="button"
+                        key={p.id}
+                        onClick={() => handleSelectPaidBy(p.id)}
+                        className={`p-4 rounded-3xl border flex flex-col items-center justify-center gap-2.5 transition-all text-center ${
+                          isSelected
+                            ? 'bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-md font-bold'
+                            : 'bg-slate-50 dark:bg-slate-800/40 text-slate-600 dark:text-slate-400 hover:bg-slate-100'
+                        }`}
+                        style={isSelected ? { boxShadow: `0 0 0 2.5px ${p.avatarColor}` } : {}}
                       >
-                        <CategoryIcon name={cat.iconName} className="w-4 h-4" />
-                      </div>
-                      <span className="text-[11px] leading-tight font-bold truncate w-full">
-                        {cat.name}
-                      </span>
-                    </button>
-                  );
-                })}
+                        <div
+                          className="w-14 h-14 rounded-2xl flex items-center justify-center text-3xl shadow-sm ring-2 ring-white dark:ring-slate-900"
+                          style={{ backgroundColor: `${p.avatarColor}20` }}
+                        >
+                          {p.emoji}
+                        </div>
+                        <div>
+                          <span className="text-sm font-extrabold block">{p.name}</span>
+                          <span className="text-[10px] text-slate-400">Platil/a zo svojho</span>
+                        </div>
+                        {isSelected && <Check className="w-4 h-4 text-emerald-500" />}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
+            )}
 
-              {/* Podkategórie pre zvolenú kategóriu */}
-              {selectedCategory && (
-                <div className="p-3 bg-slate-50 dark:bg-slate-800/40 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+            {/* STEP 3: KATEGÓRIA PODĽA DRUHU EVENTU + MENA & KRAJINA */}
+            {step === 3 && (
+              <div className="space-y-3.5 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                      3. Krok: Kategória pre {selectedEvent?.name}
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Kategórie sú prísne filtrované podľa druhu projektu
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStep(2)}
+                    className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Späť
+                  </button>
+                </div>
+
+                {/* Ak ide o výlet: Krajina a výber meny */}
+                {isTrip && (
+                  <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-300/80 dark:border-amber-900/60 rounded-2xl space-y-3">
+                    {/* Krajina výletu */}
+                    <div>
+                      <label className="font-bold text-amber-900 dark:text-amber-300 text-[11px] flex items-center gap-1.5 uppercase tracking-wider mb-1">
+                        <Globe className="w-3.5 h-3.5 text-amber-600" />
+                        <span>Krajina výletu (iba pri výletoch)</span>
+                      </label>
+                      <select
+                        value={country || 'Česko'}
+                        onChange={(e) => handleCountrySelect(e.target.value)}
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-800 rounded-xl text-xs font-semibold text-slate-900 dark:text-white"
+                      >
+                        {COUNTRY_CURRENCY_MAP.map((item) => (
+                          <option key={item.country} value={item.country}>
+                            {item.flag} {item.country} — {item.currencyCode} ({item.currencySymbol})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Výber meny pre pridávanie položky */}
+                    <div>
+                      <label className="font-bold text-amber-900 dark:text-amber-300 text-[11px] flex items-center gap-1.5 uppercase tracking-wider mb-1.5">
+                        <Coins className="w-3.5 h-3.5 text-amber-600" />
+                        <span>V akej mene chcete položku pridať?</span>
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        {COMMON_TRIP_CURRENCIES.map((c) => (
+                          <button
+                            type="button"
+                            key={c.code}
+                            onClick={() => handleCurrencySelect(c.code, c.symbol)}
+                            className={`px-2 py-1.5 rounded-xl text-xs font-bold transition-all border text-center flex items-center justify-between ${
+                              currencyCode === c.code
+                                ? 'bg-amber-500 text-white border-amber-600 shadow-xs'
+                                : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-amber-200 dark:border-amber-900/60 hover:bg-amber-100/50'
+                            }`}
+                          >
+                            <span>{c.code} {c.symbol}</span>
+                            {currencyCode === c.code && <Check className="w-3 h-3 shrink-0" />}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Rande / Prerábka / Domácnosť: Informácia že platí vždy EUR (€) */}
+                {!isTrip && (
+                  <div className="p-2.5 bg-sky-50/70 dark:bg-sky-950/20 border border-sky-200 dark:border-sky-900/50 rounded-xl flex items-center justify-between text-xs text-sky-800 dark:text-sky-300 font-semibold">
+                    <span>Mena projektu: Euro (€)</span>
+                    <span className="text-[10px] bg-sky-100 dark:bg-sky-900/50 px-2 py-0.5 rounded-full">
+                      Vždy v €
+                    </span>
+                  </div>
+                )}
+
+                {/* Výber podkategórie */}
+                <div className="space-y-2">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-                    Podkategória ({selectedCategory.name})
+                    Podkategórie ({selectedCategory?.name})
                   </span>
-                  <div className="flex flex-wrap gap-1.5">
-                    {selectedCategory.subcategories.map((sub) => {
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {selectedCategory?.subcategories.map((sub) => {
                       const isSelected = subcategory === sub;
                       return (
                         <button
                           type="button"
                           key={sub}
-                          onClick={() => setSubcategory(sub)}
-                          className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-all ${
+                          onClick={() => {
+                            setSubcategory(sub);
+                            setStep(4); // Advance to Step 4!
+                          }}
+                          className={`p-2.5 rounded-xl text-xs font-semibold text-left transition-all border flex items-center justify-between ${
                             isSelected
-                              ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs font-bold'
-                              : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                              ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-xs font-bold border-slate-900 dark:border-white'
+                              : 'bg-slate-50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800 hover:bg-slate-100'
                           }`}
                         >
-                          {sub}
+                          <span className="truncate">{sub}</span>
+                          {isSelected ? <Check className="w-3.5 h-3.5" /> : <ArrowRight className="w-3.5 h-3.5 text-slate-400" />}
                         </button>
                       );
                     })}
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* VÝLET KRAJINA & MENA - Pokiaľ ide o výlet */}
-            {isTrip && (
-              <div className="p-3.5 bg-amber-50/70 dark:bg-amber-950/20 border border-amber-300/80 dark:border-amber-900/60 rounded-2xl space-y-2.5 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between">
-                  <label className="font-bold text-amber-900 dark:text-amber-300 text-[11px] flex items-center gap-1.5 uppercase tracking-wider">
-                    <Globe className="w-3.5 h-3.5 text-amber-600" />
-                    <span>Krajina výletu & Lokálna mena</span>
-                  </label>
-                  {currencyCode !== 'EUR' && (
-                    <span className="text-[10px] text-amber-800 dark:text-amber-300 font-semibold">
-                      1 € ≈ {exchangeRate} {currencyCode}
-                    </span>
-                  )}
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setStep(4)}
+                    className="w-full py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold flex items-center justify-center gap-1.5"
+                  >
+                    <span>Pokračovať na sumu a dátum</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
-
-                <select
-                  value={country || 'Česko'}
-                  onChange={(e) => handleCountrySelect(e.target.value)}
-                  className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-800 rounded-xl text-xs font-semibold text-slate-900 dark:text-white"
-                >
-                  {COUNTRY_CURRENCY_MAP.map((item) => (
-                    <option key={item.country} value={item.country}>
-                      {item.flag} {item.country} — {item.currencyCode} ({item.currencySymbol})
-                    </option>
-                  ))}
-                </select>
               </div>
             )}
 
-            {/* 4. SUMA A MENA KRAJINY */}
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <label className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">
-                  4. Suma ({currencyCode})
-                </label>
-                {isTrip && currencyCode !== 'EUR' && (
-                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">
-                    Platba v {currencyCode} ({currencySymbol})
-                  </span>
-                )}
-              </div>
-
-              <div className="relative">
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  placeholder="0.00"
-                  value={amountInCurrency}
-                  onChange={(e) => setAmountInCurrency(e.target.value)}
-                  autoFocus={!editingExpense}
-                  className="w-full h-14 px-4 pr-16 text-2xl font-extrabold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center tabular-nums"
-                />
-                <span className="absolute right-4 top-1/2 -translate-y-1/2 text-lg font-bold text-slate-500 dark:text-slate-400">
-                  {currencySymbol}
-                </span>
-              </div>
-
-              {/* Rýchle čiastky */}
-              <div className="flex gap-2">
-                {[5, 10, 20, 50, 100].map((val) => (
-                  <button
-                    type="button"
-                    key={val}
-                    onClick={() => handleQuickAddAmount(val)}
-                    className="flex-1 py-1 text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg active:scale-95 transition-all"
-                  >
-                    +{val}
-                  </button>
-                ))}
-              </div>
-
-              {/* Cudzia mena & Prepočet na EUR */}
-              {currencyCode !== 'EUR' && (
-                <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl flex items-center justify-between text-xs">
+            {/* STEP 4: SUMA, POLOŽKA, KOMENTÁR A DÁTUM */}
+            {step === 4 && (
+              <div className="space-y-3.5 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
                   <div>
-                    <span className="text-amber-800 dark:text-amber-300 font-semibold block">
-                      Lokálna mena ({country}): {numericInput.toFixed(2)} {currencyCode}
-                    </span>
-                    <span className="text-[10px] text-slate-400">
-                      Kurz: 1 € ≈ {exchangeRate} {currencyCode}
+                    <h3 className="font-extrabold text-sm text-slate-900 dark:text-white">
+                      4. Krok: Suma, položka a dátum
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      {selectedEvent?.name} · {subcategory || selectedCategory?.name} · Platil {paidBy === 'user_1' ? (profiles[0]?.name || 'Danko') : (profiles[1]?.name || 'Simonka')}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setStep(3)}
+                    className="text-[11px] text-slate-400 hover:text-slate-600 flex items-center gap-1"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" /> Späť
+                  </button>
+                </div>
+
+                {/* Suma s menou */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <label className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">
+                      Suma ({currencyCode}) *
+                    </label>
+                    {currencyCode !== 'EUR' && (
+                      <span className="text-[10px] text-amber-600 font-bold">
+                        Prepočet na EUR: ≈ {calculatedEurAmount.toFixed(2)} €
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      required
+                      placeholder="0.00"
+                      value={amountInCurrency}
+                      onChange={(e) => setAmountInCurrency(e.target.value)}
+                      autoFocus
+                      className="w-full h-14 px-4 pr-16 text-2xl font-extrabold text-slate-900 dark:text-white bg-slate-50 dark:bg-slate-800/50 rounded-2xl border border-slate-200 dark:border-slate-700 focus:outline-none focus:ring-2 focus:ring-sky-500 text-center tabular-nums"
+                    />
+                    <span className="absolute right-4 top-1/2 -translate-y-1/2 text-lg font-bold text-slate-500 dark:text-slate-400">
+                      {currencySymbol}
                     </span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-[10px] uppercase font-bold text-slate-400 block">
-                      Prepočet na EUR:
-                    </span>
-                    <span className="text-sm font-extrabold text-slate-900 dark:text-white tabular-nums">
-                      ≈ {calculatedEurAmount.toFixed(2)} €
-                    </span>
+
+                  {/* Rýchle čiastky */}
+                  <div className="flex gap-2">
+                    {[5, 10, 20, 50, 100].map((val) => (
+                      <button
+                        type="button"
+                        key={val}
+                        onClick={() => handleQuickAddAmount(val)}
+                        className="flex-1 py-1 text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-lg active:scale-95 transition-all"
+                      >
+                        +{val}
+                      </button>
+                    ))}
                   </div>
                 </div>
-              )}
-            </div>
 
-            {/* 5. ČO TO BOLO */}
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase tracking-wider text-[11px]">
-                5. Čo to bolo? (Položka) *
-              </label>
-              <input
-                type="text"
-                required
-                placeholder={
-                  selectedCategory?.defaultEventType === 'trip'
-                    ? 'Napr. Lístky na metro v Prahe, Večera v reštaurácii...'
-                    : selectedCategory?.defaultEventType === 'renovation'
-                    ? 'Napr. Dlažba a lepidlo z OBI, Práca vodára...'
-                    : 'Napr. Večera, Káva a koláčik, Nákup v Bille...'
-                }
-                value={itemTitle}
-                onChange={(e) => setItemTitle(e.target.value)}
-                className="w-full px-3 py-2.5 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-              />
-            </div>
+                {/* Čo to bolo? */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase tracking-wider text-[11px]">
+                    Čo to bolo? (Položka) *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder={
+                      isTrip
+                        ? 'Napr. Lístky na vlak, Večera, Ubytovanie...'
+                        : selectedEvent?.type === 'renovation'
+                        ? 'Napr. Sadrokartón z OBI, Práca vodára...'
+                        : 'Napr. Nákup v Bille, Káva a koláčik...'
+                    }
+                    value={itemTitle}
+                    onChange={(e) => setItemTitle(e.target.value)}
+                    className="w-full px-3.5 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
 
-            {/* 6. KOMENTÁR K TOMU */}
-            <div>
-              <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase tracking-wider text-[11px]">
-                6. Komentár k tomu (voliteľné)
-              </label>
-              <textarea
-                rows={2}
-                placeholder="Doplňujúca poznámka k výdavku..."
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white resize-none"
-              />
-            </div>
+                {/* Komentár k tomu */}
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1 uppercase tracking-wider text-[11px]">
+                    Komentár k tomu (voliteľné)
+                  </label>
+                  <textarea
+                    rows={2}
+                    placeholder="Doplňujúca poznámka k výdavku..."
+                    value={note}
+                    onChange={(e) => setNote(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white resize-none"
+                  />
+                </div>
 
-            {/* 7. DÁTUM */}
-            <div>
-              <div className="flex items-center justify-between mb-1">
-                <label className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">
-                  7. Dátum
-                </label>
-                <div className="flex gap-2">
+                {/* Dátum */}
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider text-[11px]">
+                      Dátum *
+                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setPresetDate(0)}
+                        className="text-sky-600 dark:text-sky-400 font-bold hover:underline"
+                      >
+                        Dnes
+                      </button>
+                      <span className="text-slate-300">·</span>
+                      <button
+                        type="button"
+                        onClick={() => setPresetDate(1)}
+                        className="text-slate-500 hover:underline"
+                      >
+                        Včera
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                    type="date"
+                    required
+                    value={dateStr}
+                    onChange={(e) => setDateStr(e.target.value)}
+                    className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white"
+                  />
+                </div>
+
+                {/* Submit button */}
+                <div className="pt-2">
                   <button
-                    type="button"
-                    onClick={() => setPresetDate(0)}
-                    className="text-sky-600 dark:text-sky-400 font-bold hover:underline"
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full h-12 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 text-white font-bold text-sm shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
                   >
-                    Dnes
-                  </button>
-                  <span className="text-slate-300">·</span>
-                  <button
-                    type="button"
-                    onClick={() => setPresetDate(1)}
-                    className="text-slate-500 hover:underline"
-                  >
-                    Včera
+                    {isSubmitting ? (
+                      <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    ) : editingExpense ? (
+                      <>
+                        <Check className="w-5 h-5" />
+                        <span>Uložiť zmeny ({calculatedEurAmount.toFixed(2)} €)</span>
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="w-5 h-5 stroke-[2.5]" />
+                        <span>Pridať výdavok ({calculatedEurAmount.toFixed(2)} €)</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
-              <input
-                type="date"
-                value={dateStr}
-                onChange={(e) => setDateStr(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-900 dark:text-white"
-              />
-            </div>
-
-            {/* Submit */}
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-full h-12 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 text-white font-bold text-sm shadow-md active:scale-98 transition-all flex items-center justify-center gap-2"
-              >
-                {isSubmitting ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                ) : editingExpense ? (
-                  <>
-                    <Check className="w-5 h-5" />
-                    <span>Uložiť zmeny (s dátovou pečiatkou)</span>
-                  </>
-                ) : (
-                  <>
-                    <Plus className="w-5 h-5 stroke-[2.5]" />
-                    <span>Pridať výdavok ({calculatedEurAmount.toFixed(2)} €)</span>
-                  </>
-                )}
-              </button>
-            </div>
+            )}
           </form>
         </div>
       </div>

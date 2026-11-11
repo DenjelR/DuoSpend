@@ -77,6 +77,16 @@ interface AppContextType {
     error: string | null;
   };
   refreshSupabaseSync: () => Promise<void>;
+
+  backendSync: {
+    pairCode: string;
+    isSyncing: boolean;
+    lastSynced: string | null;
+    error: string | null;
+  };
+  setPairCode: (code: string) => void;
+  syncToBackend: (customCode?: string) => Promise<boolean>;
+  pullFromBackend: (customCode?: string) => Promise<boolean>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -91,6 +101,7 @@ const LOCAL_STORAGE_KEYS = {
   THEME: 'duospend_theme',
   SELECTED_EVENT_ID: 'duospend_selected_event_id_v3',
   PURGED_FLAG: 'duospend_purged_for_danko_simonka_v3',
+  PAIR_CODE: 'duospend_pair_code',
 };
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -132,7 +143,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length >= 2) return parsed;
+        if (Array.isArray(parsed) && parsed.length >= 2 && parsed[0]?.name && parsed[1]?.name) {
+          return [
+            { ...DEFAULT_PROFILES[0], ...parsed[0] },
+            { ...DEFAULT_PROFILES[1], ...parsed[1] },
+          ];
+        }
       } catch {}
     }
     return DEFAULT_PROFILES;
@@ -157,6 +173,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return DEFAULT_EVENTS;
   });
 
+  // Auto-migrate trip project name to "Výlet a cestovanie"
+  useEffect(() => {
+    setEvents((prev) =>
+      prev.map((ev) =>
+        ev.id === 'event_vylet_cesko' && ev.name.includes('Praha')
+          ? { ...ev, name: 'Výlet a cestovanie', description: 'Spoločné výlety, dovolenky a cestovanie' }
+          : ev
+      )
+    );
+  }, []);
+
   const [selectedEventId, setSelectedEventIdState] = useState<string>(() => {
     const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SELECTED_EVENT_ID);
     return saved || 'event_prerabka';
@@ -168,7 +195,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // 4. Navigation & Modals
-  const [activeTab, setActiveTab] = useState<ActiveTab>('events');
+  const [activeTab, setActiveTab] = useState<ActiveTab>('open_events');
   const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
   const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const [preselectedEventIdForAdd, setPreselectedEventIdForAdd] = useState<string | null>(null);
@@ -213,8 +240,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     error: null as string | null,
   });
 
-  const currentUser = profiles.find((p) => p.id === currentUserId) || profiles[0];
-  const otherUser = profiles.find((p) => p.id !== currentUserId) || profiles[1];
+  const currentUser = profiles.find((p) => p.id === currentUserId) || profiles[0] || DEFAULT_PROFILES[0];
+  const otherUser = profiles.find((p) => p.id !== currentUserId) || profiles[1] || DEFAULT_PROFILES[1];
 
   const openEvents = events.filter((ev) => ev.status !== 'closed');
   const closedEvents = events.filter((ev) => ev.status === 'closed');
@@ -804,6 +831,116 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem(LOCAL_STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
   };
 
+  // 7. Backend Pair Sync (Express endpoint /api/sync/:code)
+  const [pairCode, setPairCodeState] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlPair = urlParams.get('pair');
+      if (urlPair) {
+        const cleaned = urlPair.trim().toUpperCase();
+        localStorage.setItem(LOCAL_STORAGE_KEYS.PAIR_CODE, cleaned);
+        return cleaned;
+      }
+      return localStorage.getItem(LOCAL_STORAGE_KEYS.PAIR_CODE) || 'DANKO-SIMI';
+    }
+    return 'DANKO-SIMI';
+  });
+
+  const [backendSync, setBackendSync] = useState<{
+    pairCode: string;
+    isSyncing: boolean;
+    lastSynced: string | null;
+    error: string | null;
+  }>({
+    pairCode: pairCode || 'DANKO-SIMI',
+    isSyncing: false,
+    lastSynced: null,
+    error: null,
+  });
+
+  const setPairCode = (code: string) => {
+    const formatted = (code.trim() || 'DANKO-SIMI').toUpperCase();
+    setPairCodeState(formatted);
+    localStorage.setItem(LOCAL_STORAGE_KEYS.PAIR_CODE, formatted);
+    setBackendSync((prev) => ({ ...prev, pairCode: formatted }));
+  };
+
+  const syncToBackend = useCallback(async (customCode?: string): Promise<boolean> => {
+    const code = (customCode || pairCode || 'DANKO-SIMI').trim().toUpperCase();
+    setBackendSync((prev) => ({ ...prev, isSyncing: true, error: null }));
+    try {
+      const payload = {
+        profiles,
+        events,
+        expenses,
+        categories,
+        settlements,
+      };
+      const res = await fetch(`/api/sync/${encodeURIComponent(code)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      setBackendSync({
+        pairCode: code,
+        isSyncing: false,
+        lastSynced: new Date().toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        error: null,
+      });
+      return true;
+    } catch (err: any) {
+      console.warn('Backend sync failed:', err);
+      setBackendSync((prev) => ({
+        ...prev,
+        isSyncing: false,
+        error: err.message || 'Chyba synchronizácie',
+      }));
+      return false;
+    }
+  }, [pairCode, profiles, events, expenses, categories, settlements]);
+
+  const pullFromBackend = useCallback(async (customCode?: string): Promise<boolean> => {
+    const code = (customCode || pairCode || 'DANKO-SIMI').trim().toUpperCase();
+    setBackendSync((prev) => ({ ...prev, isSyncing: true, error: null }));
+    try {
+      const res = await fetch(`/api/sync/${encodeURIComponent(code)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const result = await res.json();
+      if (result.success && result.data) {
+        const d = result.data;
+        if (Array.isArray(d.profiles) && d.profiles.length >= 2) setProfiles(d.profiles);
+        if (Array.isArray(d.events)) setEvents(d.events);
+        if (Array.isArray(d.expenses)) setExpenses(d.expenses);
+        if (Array.isArray(d.categories)) setCategories(d.categories);
+        if (Array.isArray(d.settlements)) setSettlements(d.settlements);
+      }
+      setBackendSync({
+        pairCode: code,
+        isSyncing: false,
+        lastSynced: new Date().toLocaleTimeString('sk-SK', { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        error: null,
+      });
+      return true;
+    } catch (err: any) {
+      console.warn('Backend pull failed:', err);
+      setBackendSync((prev) => ({
+        ...prev,
+        isSyncing: false,
+        error: err.message || 'Chyba načítania',
+      }));
+      return false;
+    }
+  }, [pairCode]);
+
+  // Initial pull from backend on load
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      pullFromBackend(pairCode);
+    }
+  }, []);
+
   return (
     <AppContext.Provider
       value={{
@@ -848,9 +985,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setPreselectedEventIdForAdd,
         supabaseStatus,
         refreshSupabaseSync,
+        backendSync,
+        setPairCode,
+        syncToBackend,
+        pullFromBackend,
       }}
     >
-      {children}
     </AppContext.Provider>
   );
 };

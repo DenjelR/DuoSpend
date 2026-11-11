@@ -1,5 +1,22 @@
 import { Category, UserProfile, Expense, AppEvent } from '../types';
 
+export interface ProfileTheme {
+  id: string;
+  name: string;
+  gradient: string;
+  accentColor: string;
+  borderClass: string;
+}
+
+export const PROFILE_THEMES: ProfileTheme[] = [
+  { id: 'ocean', name: 'Azúrový oceán', gradient: 'from-sky-500/20 via-blue-500/15 to-indigo-500/10', accentColor: '#0284c7', borderClass: 'border-sky-300 dark:border-sky-800' },
+  { id: 'rose', name: 'Romantická ruža', gradient: 'from-rose-500/20 via-pink-500/15 to-amber-500/10', accentColor: '#e11d48', borderClass: 'border-rose-300 dark:border-rose-800' },
+  { id: 'sunset', name: 'Západ slnka', gradient: 'from-amber-500/20 via-orange-500/15 to-rose-500/10', accentColor: '#f59e0b', borderClass: 'border-amber-300 dark:border-amber-800' },
+  { id: 'emerald', name: 'Smaragdový les', gradient: 'from-emerald-500/20 via-teal-500/15 to-cyan-500/10', accentColor: '#10b981', borderClass: 'border-emerald-300 dark:border-emerald-800' },
+  { id: 'violet', name: 'Kráľovská fialová', gradient: 'from-purple-500/20 via-indigo-500/15 to-pink-500/10', accentColor: '#8b5cf6', borderClass: 'border-purple-300 dark:border-purple-800' },
+  { id: 'cyber', name: 'Midnight Slate', gradient: 'from-slate-700/30 via-slate-800/40 to-slate-900/50', accentColor: '#64748b', borderClass: 'border-slate-400 dark:border-slate-700' },
+];
+
 export const DEFAULT_PROFILES: UserProfile[] = [
   {
     id: 'user_1',
@@ -7,6 +24,8 @@ export const DEFAULT_PROFILES: UserProfile[] = [
     avatarColor: '#0284c7', // Sky Blue
     emoji: '🧔',
     pin: '',
+    themeId: 'ocean',
+    themeGradient: 'from-sky-500/20 via-blue-500/15 to-indigo-500/10',
   },
   {
     id: 'user_2',
@@ -14,6 +33,8 @@ export const DEFAULT_PROFILES: UserProfile[] = [
     avatarColor: '#e11d48', // Rose Pink/Red
     emoji: '👩',
     pin: '',
+    themeId: 'rose',
+    themeGradient: 'from-rose-500/20 via-pink-500/15 to-amber-500/10',
   },
 ];
 
@@ -112,7 +133,7 @@ export const DEFAULT_EVENTS: AppEvent[] = [
   },
   {
     id: 'event_vylet_cesko',
-    name: 'Výlet Praha & Česko',
+    name: 'Výlet a cestovanie',
     type: 'trip',
     emoji: '✈️',
     color: '#f59e0b',
@@ -120,7 +141,7 @@ export const DEFAULT_EVENTS: AppEvent[] = [
     currency: 'CZK',
     currency_symbol: 'Kč',
     exchange_rate_to_eur: 25.2,
-    description: 'Predĺžený víkend v Prahe a pamiatky',
+    description: 'Spoločné výlety, dovolenky a cestovanie',
     status: 'active',
     created_at: new Date().toISOString(),
   },
