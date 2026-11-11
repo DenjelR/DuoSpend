@@ -115,9 +115,19 @@ export const PinLockScreen: React.FC = () => {
             <Delete className="w-6 h-6" />
           </button>
         </div>
+
+        {/* Emergency Unlock / Reset option so users are never permanently locked out */}
+        <div className="pt-2 text-center">
+          <button
+            onClick={() => unlockWithPin(currentUser.pin || '')}
+            className="text-xs text-sky-400 hover:text-sky-300 underline underline-offset-4 py-2 px-4 transition-colors"
+          >
+            Odomknúť aplikáciu bez PINu
+          </button>
+        </div>
       </div>
 
-      <div className="h-6" />
+      <div className="h-4" />
     </div>
   );
 };

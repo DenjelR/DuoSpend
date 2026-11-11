@@ -104,42 +104,77 @@ const LOCAL_STORAGE_KEYS = {
   PAIR_CODE: 'duospend_pair_code',
 };
 
+// Safe storage helpers that never throw in private browsing or restricted iframes
+const safeGetStorage = (key: string, fallback: string | null = null): string | null => {
+  try {
+    if (typeof window === 'undefined' || !window.localStorage) return fallback;
+    return window.localStorage.getItem(key) ?? fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+const safeSetStorage = (key: string, value: string): void => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(key, value);
+    }
+  } catch {}
+};
+
+const safeRemoveStorage = (key: string): void => {
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.removeItem(key);
+    }
+  } catch {}
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   // Check and purge legacy sample data for Danko & Simonka clean start
-  if (typeof window !== 'undefined' && !localStorage.getItem(LOCAL_STORAGE_KEYS.PURGED_FLAG)) {
-    localStorage.removeItem('duospend_expenses');
-    localStorage.removeItem('duospend_profiles');
-    localStorage.removeItem('duospend_events');
-    localStorage.removeItem('duospend_settlements');
-    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify([]));
-    localStorage.setItem(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(DEFAULT_PROFILES));
-    localStorage.setItem(LOCAL_STORAGE_KEYS.EVENTS, JSON.stringify(DEFAULT_EVENTS));
-    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify([]));
-    localStorage.setItem(LOCAL_STORAGE_KEYS.PURGED_FLAG, 'true');
-  }
+  try {
+    if (typeof window !== 'undefined' && !safeGetStorage(LOCAL_STORAGE_KEYS.PURGED_FLAG)) {
+      safeRemoveStorage('duospend_expenses');
+      safeRemoveStorage('duospend_profiles');
+      safeRemoveStorage('duospend_events');
+      safeRemoveStorage('duospend_settlements');
+      safeSetStorage(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify([]));
+      safeSetStorage(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(DEFAULT_PROFILES));
+      safeSetStorage(LOCAL_STORAGE_KEYS.EVENTS, JSON.stringify(DEFAULT_EVENTS));
+      safeSetStorage(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify([]));
+      safeSetStorage(LOCAL_STORAGE_KEYS.PURGED_FLAG, 'true');
+    }
+  } catch {}
 
   // 1. Theme State
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.THEME);
-    if (saved) return saved === 'dark';
-    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    try {
+      const saved = safeGetStorage(LOCAL_STORAGE_KEYS.THEME);
+      if (saved) return saved === 'dark';
+      if (typeof window !== 'undefined' && window.matchMedia) {
+        return window.matchMedia('(prefers-color-scheme: dark)').matches;
+      }
+    } catch {}
+    return false;
   });
 
   useEffect(() => {
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-      localStorage.setItem(LOCAL_STORAGE_KEYS.THEME, 'dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-      localStorage.setItem(LOCAL_STORAGE_KEYS.THEME, 'light');
-    }
+    try {
+      if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+        safeSetStorage(LOCAL_STORAGE_KEYS.THEME, 'dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        safeSetStorage(LOCAL_STORAGE_KEYS.THEME, 'light');
+      }
+    } catch {}
   }, [isDarkMode]);
 
   const toggleDarkMode = () => setIsDarkMode((prev) => !prev);
 
   // 2. Profiles State (Danko & Simonka)
   const [profiles, setProfiles] = useState<UserProfile[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.PROFILES);
+    const saved = safeGetStorage(LOCAL_STORAGE_KEYS.PROFILES);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -155,7 +190,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [currentUserId, setCurrentUserIdState] = useState<UserId>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.CURRENT_USER_ID) as UserId;
+    const saved = safeGetStorage(LOCAL_STORAGE_KEYS.CURRENT_USER_ID) as UserId;
     return saved === 'user_2' ? 'user_2' : 'user_1';
   });
 
@@ -163,7 +198,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // 3. Events State
   const [events, setEvents] = useState<AppEvent[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.EVENTS);
+    const saved = safeGetStorage(LOCAL_STORAGE_KEYS.EVENTS);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
@@ -185,13 +220,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const [selectedEventId, setSelectedEventIdState] = useState<string>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SELECTED_EVENT_ID);
+    const saved = safeGetStorage(LOCAL_STORAGE_KEYS.SELECTED_EVENT_ID);
     return saved || 'event_prerabka';
   });
 
   const setSelectedEventId = (id: string) => {
     setSelectedEventIdState(id);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.SELECTED_EVENT_ID, id);
+    safeSetStorage(LOCAL_STORAGE_KEYS.SELECTED_EVENT_ID, id);
   };
 
   // 4. Navigation & Modals
@@ -202,7 +237,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // 5. Data State (Expenses initialized to EMPTY [])
   const [categories, setCategories] = useState<Category[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.CATEGORIES);
+    const saved = safeGetStorage(LOCAL_STORAGE_KEYS.CATEGORIES);
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -212,7 +247,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [expenses, setExpenses] = useState<Expense[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.EXPENSES);
+    const saved = safeGetStorage(LOCAL_STORAGE_KEYS.EXPENSES);
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -222,7 +257,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
 
   const [settlements, setSettlements] = useState<Settlement[]>(() => {
-    const saved = localStorage.getItem(LOCAL_STORAGE_KEYS.SETTLEMENTS);
+    const saved = safeGetStorage(LOCAL_STORAGE_KEYS.SETTLEMENTS);
     if (saved) {
       try {
         return JSON.parse(saved);
@@ -248,23 +283,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Helper to persist to localStorage
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(profiles));
+    safeSetStorage(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(profiles));
   }, [profiles]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.EVENTS, JSON.stringify(events));
+    safeSetStorage(LOCAL_STORAGE_KEYS.EVENTS, JSON.stringify(events));
   }, [events]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
+    safeSetStorage(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify(expenses));
   }, [expenses]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
+    safeSetStorage(LOCAL_STORAGE_KEYS.CATEGORIES, JSON.stringify(categories));
   }, [categories]);
 
   useEffect(() => {
-    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify(settlements));
+    safeSetStorage(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify(settlements));
   }, [settlements]);
 
   // Set Current User with optional PIN
@@ -276,7 +311,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       setCurrentUserIdState(id);
       setIsPinLocked(false);
-      localStorage.setItem(LOCAL_STORAGE_KEYS.CURRENT_USER_ID, id);
+      safeSetStorage(LOCAL_STORAGE_KEYS.CURRENT_USER_ID, id);
     }
   };
 
@@ -284,7 +319,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const user = profiles.find((p) => p.id === currentUserId);
     if (!user?.pin || user.pin === enteredPin) {
       setIsPinLocked(false);
-      localStorage.setItem(LOCAL_STORAGE_KEYS.CURRENT_USER_ID, currentUserId);
+      safeSetStorage(LOCAL_STORAGE_KEYS.CURRENT_USER_ID, currentUserId);
       return true;
     }
     return false;
@@ -824,24 +859,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setEvents(DEFAULT_EVENTS);
     setProfiles(DEFAULT_PROFILES);
     setCategories(DEFAULT_CATEGORIES);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify([]));
-    localStorage.setItem(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify([]));
-    localStorage.setItem(LOCAL_STORAGE_KEYS.EVENTS, JSON.stringify(DEFAULT_EVENTS));
-    localStorage.setItem(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(DEFAULT_PROFILES));
-    localStorage.setItem(LOCAL_STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
+    safeSetStorage(LOCAL_STORAGE_KEYS.EXPENSES, JSON.stringify([]));
+    safeSetStorage(LOCAL_STORAGE_KEYS.SETTLEMENTS, JSON.stringify([]));
+    safeSetStorage(LOCAL_STORAGE_KEYS.EVENTS, JSON.stringify(DEFAULT_EVENTS));
+    safeSetStorage(LOCAL_STORAGE_KEYS.PROFILES, JSON.stringify(DEFAULT_PROFILES));
+    safeSetStorage(LOCAL_STORAGE_KEYS.CATEGORIES, JSON.stringify(DEFAULT_CATEGORIES));
   };
 
   // 7. Backend Pair Sync (Express endpoint /api/sync/:code)
   const [pairCode, setPairCodeState] = useState<string>(() => {
     if (typeof window !== 'undefined') {
-      const urlParams = new URLSearchParams(window.location.search);
-      const urlPair = urlParams.get('pair');
-      if (urlPair) {
-        const cleaned = urlPair.trim().toUpperCase();
-        localStorage.setItem(LOCAL_STORAGE_KEYS.PAIR_CODE, cleaned);
-        return cleaned;
-      }
-      return localStorage.getItem(LOCAL_STORAGE_KEYS.PAIR_CODE) || 'DANKO-SIMI';
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlPair = urlParams.get('pair');
+        if (urlPair) {
+          const cleaned = urlPair.trim().toUpperCase();
+          safeSetStorage(LOCAL_STORAGE_KEYS.PAIR_CODE, cleaned);
+          return cleaned;
+        }
+      } catch {}
+      return safeGetStorage(LOCAL_STORAGE_KEYS.PAIR_CODE) || 'DANKO-SIMI';
     }
     return 'DANKO-SIMI';
   });
@@ -861,7 +898,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const setPairCode = (code: string) => {
     const formatted = (code.trim() || 'DANKO-SIMI').toUpperCase();
     setPairCodeState(formatted);
-    localStorage.setItem(LOCAL_STORAGE_KEYS.PAIR_CODE, formatted);
+    safeSetStorage(LOCAL_STORAGE_KEYS.PAIR_CODE, formatted);
     setBackendSync((prev) => ({ ...prev, pairCode: formatted }));
   };
 
@@ -1001,6 +1038,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         pullFromBackend,
       }}
     >
+      {children}
     </AppContext.Provider>
   );
 };
